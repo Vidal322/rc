@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
     unsigned char ua[BUF_SIZE];
     set[0] = 0x7E;
     set[1] = 0x03;
-    set[2] = 0x03;
+    set[2] = 0x00;
     set[3] = 0x03 ^ 0x03;
     set[4] = 0x7E;
 
@@ -115,16 +115,13 @@ int main(int argc, char *argv[])
         else
             state = 0;
 
-        printf("var = 0x%02X\n", (unsigned int)(buf[0] & 0xFF));
+        printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
 
-        if (state == 5) {
+        if (state == 5)
             STOP = TRUE;
-            write(fd, buf, BUF_SIZE);
-            printf("sent acknowledge package\n");
-            sleep(1);
-        }
     }
-
+    write(fd, ua, BUF_SIZE);
+    printf("sent acknowledge package\n");
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)

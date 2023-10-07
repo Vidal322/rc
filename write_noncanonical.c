@@ -127,39 +127,38 @@ int main(int argc, char *argv[])
 
     // Create string to send
     unsigned char buf[BUF_SIZE] = {0};
-    
-    int alarmEnabled = FALSE;
-    int alarmCount = 0;
 
     int state = 0;
 
-
     (void)signal(SIGALRM, alarmHandler);
 
-    while (alarmCount < 4) {
+    while (alarmCount < 3) {
+        
         if (alarmEnabled == FALSE) {
-            alarm(3); // Set alarm to be triggered in 3s
             alarmEnabled = TRUE;
+            alarm(2); // Set alarm to be triggered in 3s
             state = 0;
-            int bytes = write(fd, set, BUF_SIZE);
-            printf("%d times set has been written\n", alarmCount);
+            write(fd, set, BUF_SIZE);
         }
         read(fd, buf, 1);
+
         printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
 
         if (buf[0] == ua[state])
             state ++;
         else
             state = 0;
+
         if (state == 5) {
             alarm(0);
             break;
         }
     }
-    if (alarmCount == 4)
+    if (alarmCount == 3)
         printf("No response. Ending program");
 
-    printf("Sucess. Ending program\n");
+    else
+        printf("Sucess. Ending program\n");
 
 
 
