@@ -16,6 +16,13 @@
 // included by <termios.h>
 #define BAUDRATE B38400
 #define _POSIX_SOURCE 1 // POSIX compliant source
+#define Start 0
+#define Flag_S 1
+#define A 2
+#define C 3
+#define BCC 4 
+#define Flag_E 5
+#define Stop 6
 
 #define FALSE 0
 #define TRUE 1
@@ -30,6 +37,7 @@ volatile int STOP = FALSE;
 
 int alarmEnabled = FALSE;
 int alarmCount = 0;
+int state = 0;
 
 // Alarm function handler
 void alarmHandler(int signal)
@@ -38,6 +46,50 @@ void alarmHandler(int signal)
     alarmCount++;
 
     printf("Alarm #%d\n", alarmCount);
+}
+
+void statemachine(unsigned char buf){
+    
+
+    switch(state) {
+        case 0:
+            if(buf == 0x7E) {
+                state = 1;
+            }
+            break;
+        case 1:
+            if(buf == 0x03) {
+                state = 2;
+            } else if(buf != 0x7E) {
+                state = 0;
+            } else state = 1;
+            break;
+        case 2:
+            if(buf == 0x07) {
+                state = 3;
+            } else if(buf != 0x7E) {
+                state = 0;
+            } else state = 1;
+            break;
+        case 3:
+            if(buf == 0x07 ^ 0x03) {
+                state = 4;
+            } else if(buf != 0x7E) {
+                state = 0;
+            } else state = 1;
+            break;
+        case 4:
+            if(buf == 0x7E) {
+                state = 5;
+            } else {
+                state = 0;
+            }
+            break;
+        
+        default:
+            state = 0;
+            break;
+    }
 }
 
 
@@ -128,7 +180,6 @@ int main(int argc, char *argv[])
     // Create string to send
     unsigned char buf[BUF_SIZE] = {0};
 
-    int state = 0;
 
     (void)signal(SIGALRM, alarmHandler);
 
@@ -140,15 +191,13 @@ int main(int argc, char *argv[])
             state = 0;
             write(fd, set, BUF_SIZE);
         }
+        printf("II\n");
         read(fd, buf, 1);
-
+        printf("OO\n");
+        statemachine(buf[0]);
         printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
 
-        if (buf[0] == ua[state])
-            state ++;
-        else
-            state = 0;
-
+       
         if (state == 5) {
             alarm(0);
             break;
