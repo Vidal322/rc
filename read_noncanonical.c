@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <signal.h>
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -22,6 +23,183 @@
 #define BUF_SIZE 256
 
 volatile int STOP = FALSE;
+
+
+int llopen(int fd) {
+    unsigned char set[BUF_SIZE];
+    unsigned char ua[BUF_SIZE];
+    set[0] = 0x7E;
+    set[1] = 0x03;
+    set[2] = 0x03;
+    set[3] = 0x03 ^ 0x03;
+    set[4] = 0x7E;
+
+    ua[0] = 0x7E;
+    ua[1] = 0x03;
+    ua[2] = 0x07;
+    ua[3] = 0x07 ^ 0x03;
+    ua[4] = 0x7E;  
+
+
+    unsigned char buf[BUF_SIZE] = {0}; 
+
+    int state = 0;
+
+    while (STOP == FALSE)
+    {
+
+        if (read(fd, buf, 1) == 0)
+            continue;
+
+
+        if (buf[0] == set[state])
+            state++;
+        else
+            state = 0;
+
+        printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
+
+
+
+        if (state == 5)
+            STOP = TRUE;
+    }
+    write(fd, ua, BUF_SIZE);
+    printf("sent acknowledge package\n");
+
+}
+
+int close(int fd) {
+     int state = 0;
+    unsigned char ua[BUF_SIZE];
+    unsigned char disc[BUF_SIZE];
+
+    ua[0] = 0x7E;
+    ua[1] = 0x03;
+    ua[2] = 0x07;
+    ua[3] = 0x03 ^ 0x07;
+    ua[4] = 0x7E;  
+
+    disc[0] = 0x7E;
+    disc[1] = 0x03;
+    disc[2] = 0x0B;
+    disc[3] = 0x03 ^ 0x0B;
+    disc[4] = 0x7E;  
+
+    // Create string to send
+    unsigned char buf[BUF_SIZE] = {0};
+
+    (void)signal(SIGALRM, alarmHandler);
+    
+
+
+    while (alarmCount < 3) {
+        
+        if (alarmEnabled == FALSE) {
+            write(fd, disc, BUF_SIZE);
+            alarmEnabled = TRUE;
+            alarm(3); // Set alarm to be triggered in 3s
+            state = 0;
+        }
+        if (alarmCount == 3)
+            break;
+
+        read(fd, buf, 1);
+
+        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
+        changeDiscState(buf[0], &state);
+
+        if (state == 5) {
+            alarm(0);
+            break;
+        }
+    }
+    return 0;
+}
+ 
+int check_XOR (unsigned char* data,unsigned BBC, int size){
+    unsigned tmp = data[0];
+    for(int i = 1; i<size ; i++){
+        tmp ^= data[i];
+    }
+    return tmp == BBC;
+}
+
+int untsuffArray(unsigned char* array) {
+
+}
+
+
+void changeReadState(unsigned char buf, int* state, int* index){
+
+    switch(*state) {
+        case 0:
+            if(buf == 0x7E) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == 0x03) {
+                *state = 2;
+            } 
+            else if(buf != 0x7E) {
+                *state = 0;
+            } 
+            else *state = 1;
+            break;
+        case 2:
+            if(buf == 0x00 || buf == 0x40) {
+                *state = 3;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == 0x43 || buf == 0x03) {
+                *state = 4;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == 0x7E) {
+                *state = 1;
+            } else {
+                *state = 5;
+            }
+            break;
+        case 5: 
+            if(buf == 0x7E)
+                *state = 6;
+            break;            
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
+
+int llread(int fd, unsigned char* result) {
+    unsigned char buf[1];
+    int state = 0, index = 0;
+    int size;
+
+    while(state != 6) {
+        read(fd, buf, 1);
+        changeReadState(buf[0], &state, &index);
+
+        if (state > 0)
+            result[index] = buf[0];
+
+    }
+    size = index + 1;
+    printf("")
+
+}
+
+// calcula o exor de tudo o que recebeu -> coincide? boa
+// recebeu N(s) = 0 manda reader_ready 1 vice versa -> variavel local inicia a 0
 
 
 int main(int argc, char *argv[])
@@ -87,51 +265,25 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
-// calcula o exor de tudo o que recebeu -> coincide? boa
-// recebeu N(s) = 0 manda reader_ready 1 vice versa -> variavel local inicia a 0
 
     printf("New termios structure set\n");
 
-    unsigned char set[BUF_SIZE];
-    unsigned char ua[BUF_SIZE];
-    set[0] = 0x7E;
-    set[1] = 0x03;
-    set[2] = 0x03;
-    set[3] = 0x03 ^ 0x03;
-    set[4] = 0x7E;
-
-    ua[0] = 0x7E;
-    ua[1] = 0x03;
-    ua[2] = 0x07;
-    ua[3] = 0x07 ^ 0x03;
-    ua[4] = 0x7E;  
-
-
-    unsigned char buf[BUF_SIZE] = {0}; 
-
-    int state = 0;
-
-    while (STOP == FALSE)
-    {
-
-        if (read(fd, buf, 1) == 0)
-            continue;
-
-
-        if (buf[0] == set[state])
-            state++;
-        else
-            state = 0;
-
-        printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
+    //llopen(fd);
 
 
 
-        if (state == 5)
-            STOP = TRUE;
-    }
-    write(fd, ua, BUF_SIZE);
-    printf("sent acknowledge package\n");
+
+
+
+
+
+
+
+
+
+
+
+
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
