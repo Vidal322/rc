@@ -23,6 +23,7 @@
 
 volatile int STOP = FALSE;
 
+
 int main(int argc, char *argv[])
 {
     // Program usage: Uses either COM1 or COM2
@@ -66,8 +67,8 @@ int main(int argc, char *argv[])
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 1; // Inter-character timer unused
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -86,13 +87,16 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
+// calcula o exor de tudo o que recebeu -> coincide? boa
+// recebeu N(s) = 0 manda reader_ready 1 vice versa -> variavel local inicia a 0
+
     printf("New termios structure set\n");
 
     unsigned char set[BUF_SIZE];
     unsigned char ua[BUF_SIZE];
     set[0] = 0x7E;
     set[1] = 0x03;
-    set[2] = 0x00;
+    set[2] = 0x03;
     set[3] = 0x03 ^ 0x03;
     set[4] = 0x7E;
 
@@ -109,13 +113,19 @@ int main(int argc, char *argv[])
 
     while (STOP == FALSE)
     {
-        read(fd, buf, 1);
+
+        if (read(fd, buf, 1) == 0)
+            continue;
+
+
         if (buf[0] == set[state])
             state++;
         else
             state = 0;
 
         printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
+
+
 
         if (state == 5)
             STOP = TRUE;
