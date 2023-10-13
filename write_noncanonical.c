@@ -153,35 +153,73 @@ int stuffArray(unsigned char* data,unsigned char* res, int size) {
             res[j++] = 0x7D;
             res[j] = 0x5D;
         }
+        else
+            res[j] = data[i];
         j++;
     }
     return 0;
 }
 
-int llwrite(int fd, unsigned char* data, int N) {
-    // F  | A | N(s) | BCC1 | Dados | F =  I
+#include <string.h>
+
+unsigned char calc_BBC_2 (unsigned char* data, unsigned char* newData, int size) {
+    unsigned char res = data[0];
+    newData[0] = data[0];
+    for (int i = 1; i  < size; i++){
+        res ^= data[i];
+        newData[i] = data[i];
+    }
+    newData[size] = res;
+
+    return 0;
+}
+
+
+int llwrite(int fd, unsigned char* data, int N, int frame_index) {
+
+
+    // F  | A | N(s) | BCC1 | Dados + B| F =  I
 
     // XOR de tudo -> BCC2 implica um array com tamanho size + 1
 
     // Stuffing  0x7E -> 7D 5E
-    //          0x7D -> 7D 5D
-    // Definir  N(s) 0/1   ->  0x00 / 0x40 iniciar var a 0 ir alterando
+    //          0x7D -> 7D 5D    // Definir  N(s) 0/1   ->  0x00 / 0x40 iniciar var a 0 ir alterando
     // Inserir F's e A
 
-    int payload_size = N + specialByteCount(data, N);
+    // Build Payload
+    unsigned char newData[N + 1];
+    calc_BBC_2(data,newData,N);
+    data = newData;
+
+    int payload_size = N + 1 + specialByteCount(data, N + 1);
     unsigned char payload[payload_size];
+    int frame_size = 5 + payload_size;
+    unsigned char frame[frame_size];
 
-    if (payload_size != N)
-        stuffArray(data, payload,N);
+    if (payload_size != N + 1)          // eficiencia
+        stuffArray(data, payload, N + 1);
 
-    for (int i = 0; i < N; i++)
-        printf("0x%02X ", data[i]);
+
+
+
+    frame[0] = 0x7E;                // First Flag
+    frame[1] = 0x03;                // A
+    frame[2] = frame_index * 0x40;  // N(s)
+    frame[3] = frame[1] ^ frame[2]; // BCC1 
+    for(int i = 0; i < payload_size; i++) { // payload
+        frame[4 + i] = payload[i];
+    }
+    frame[frame_size - 1] = 0x7E;   // Final Flag
+
+
+    //write(fd, frame, frame_size);
+
+    for (int i = 0; i < frame_size; i++)
+        printf("0x%02X ", frame[i]);
     printf("\n");
-    for (int i = 0; i < payload_size; i++)
-        printf("0x%02X ", payload[i]);
-    printf("\n");
+
     return 0;
-}
+    }
 
 int main(int argc, char *argv[])
 {
@@ -251,8 +289,8 @@ int main(int argc, char *argv[])
     unsigned char t[10];
     for (int i= 0; i < 10; i++) t[i] = 0xFF; t[2] = 0x7D; t[9] = 0x7E;
     //llopen(fd);
-
-    llwrite(fd,t, 10);
+    
+    llwrite(fd,t, 10, 1);
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
