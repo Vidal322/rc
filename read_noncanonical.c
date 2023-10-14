@@ -68,7 +68,7 @@ int llopen(int fd) {
     printf("sent acknowledge package\n");
 
 }
-
+/*
 int close(int fd) {
      int state = 0;
     unsigned char ua[BUF_SIZE];
@@ -115,9 +115,9 @@ int close(int fd) {
         }
     }
     return 0;
-}
+}*/
  
-int check_XOR (unsigned char* data,unsigned BBC, int size){
+int check_BBC_2 (unsigned char* data,unsigned BBC, int size){
     unsigned tmp = data[0];
     for(int i = 1; i<size ; i++){
         tmp ^= data[i];
@@ -125,14 +125,31 @@ int check_XOR (unsigned char* data,unsigned BBC, int size){
     return tmp == BBC;
 }
 
+//int check_BBC ()
+
 int untsuffArray(unsigned char* array) {
 
 }
 
+int send_RR (int fd,unsigned char frame_index, int success){
+    unsigned char tmp = frame_index == 0 ? 0x85 : 0x05;
+    unsigned char tmp2 = frame_index == 0 ? 0x01 : 0x81; //MUDAR DE NOVO
+    
+    unsigned char RR[5];
 
-void changeReadState(unsigned char buf, int* state, int* index){
+    RR[0] = 0x7E;
+    RR[1] = 0x03;
+    RR[2] = success ?  tmp : tmp2;
+    RR[3] = RR[1] ^ RR[2];
+    RR[4] = 0x7E;
 
-    switch(*state) {
+    write(fd,RR,5);
+}
+
+
+void changeReadState(unsigned char buf, int* state, int* index,unsigned char* frame_index){
+
+    switch(*state) { // tem que retornar os RR e as outras ceans do genero
         case 0:
             if(buf == 0x7E) {
                 *state = 1;
@@ -148,14 +165,20 @@ void changeReadState(unsigned char buf, int* state, int* index){
             else *state = 1;
             break;
         case 2:
-            if(buf == 0x00 || buf == 0x40) {
+            if(buf == 0x00) {
                 *state = 3;
-            } else if(buf != 0x7E) {
+                *frame_index = 0;}
+            
+                else if (buf == 0x40){
+                    *state = 3;
+                    *frame_index = 1;
+                } 
+             else if(buf != 0x7E) {
                 *state = 0;
             } else *state = 1;
             break;
         case 3:
-            if(buf == 0x43 || buf == 0x03) {
+            if(buf == 0x43 || buf == 0x03) { // meter a enviar o RRJ
                 *state = 4;
             } else if(buf != 0x7E) {
                 *state = 0;
@@ -171,30 +194,42 @@ void changeReadState(unsigned char buf, int* state, int* index){
         case 5: 
             if(buf == 0x7E)
                 *state = 6;
-            break;            
+             // nao esquecer aquele byte no final temos de mudar isto
+            break; 
+ 
 
         default:
             *state = 0;
             break;
     }
+
+    if (*state > 0) (*index)++;
 }
 
 
 int llread(int fd, unsigned char* result) {
     unsigned char buf[1];
-    int state = 0, index = 0;
+    int state = 0, index = -1;
     int size;
+    unsigned char frame_index;
 
     while(state != 6) {
         read(fd, buf, 1);
-        changeReadState(buf[0], &state, &index);
-
+        printf("buf: 0x%02X \n",buf[0]);
+        changeReadState(buf[0], &state, &index, &frame_index);
+        printf("INDEX:%d  STATE: %d  SIZE: %d FRAME: %d\n",index,state,size,frame_index);
         if (state > 0)
             result[index] = buf[0];
-
     }
     size = index + 1;
-    printf("")
+     for (int i = 0; i < size; i++)
+        printf("0x%02X ", result[i]);
+    printf("\n");
+
+    send_RR(fd,frame_index,1); // temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
+    
+    
+    //
 
 }
 
@@ -268,7 +303,10 @@ int main(int argc, char *argv[])
 
     printf("New termios structure set\n");
 
-    //llopen(fd);
+    llopen(fd);
+    unsigned char result[20];
+
+    llread(fd,result);
 
 
 
