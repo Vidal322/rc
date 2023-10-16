@@ -25,14 +25,53 @@
 volatile int STOP = FALSE;
 
 
+void changeOpenState(unsigned char buf, int* state){
+
+    switch(*state) {
+        case 0:
+            if(buf == 0x7E) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == 0x03) {
+                *state = 2;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == 0x03) {
+                *state = 3;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == 0x03 ^ 0x03) {
+                *state = 4;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == 0x7E) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+       
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
 int llopen(int fd) {
-    unsigned char set[BUF_SIZE];
+
     unsigned char ua[BUF_SIZE];
-    set[0] = 0x7E;
-    set[1] = 0x03;
-    set[2] = 0x03;
-    set[3] = 0x03 ^ 0x03;
-    set[4] = 0x7E;
 
     ua[0] = 0x7E;
     ua[1] = 0x03;
@@ -51,71 +90,99 @@ int llopen(int fd) {
         if (read(fd, buf, 1) == 0)
             continue;
 
-
-        if (buf[0] == set[state])
-            state++;
-        else
-            state = 0;
+        changeOpenState(buf[0], &state);
 
         printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
-
-
 
         if (state == 5)
             STOP = TRUE;
     }
     write(fd, ua, BUF_SIZE);
     printf("sent acknowledge package\n");
-
 }
-/*
-int close(int fd) {
-     int state = 0;
-    unsigned char ua[BUF_SIZE];
+
+void changeCloseState(unsigned char buf, int* state){
+
+    switch(*state) {
+        case 0:
+            if(buf == 0x7E) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == 0x03) {
+                *state = 2;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == 0x0B) {
+                *state = 3;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == 0x03 ^ 0x0B) {
+                *state = 4;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == 0x7E) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+       
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
+int llclose(int fd){
     unsigned char disc[BUF_SIZE];
+    unsigned char ua[BUF_SIZE];
+
+    disc[0] = 0x7E;
+    disc[1] = 0x01;
+    disc[2] = 0x0B;
+    disc[3] = 0x0B ^ 0x01;
+    disc[4] = 0x7E;  
 
     ua[0] = 0x7E;
     ua[1] = 0x03;
     ua[2] = 0x07;
-    ua[3] = 0x03 ^ 0x07;
+    ua[3] = 0x07 ^ 0x03;
     ua[4] = 0x7E;  
 
-    disc[0] = 0x7E;
-    disc[1] = 0x03;
-    disc[2] = 0x0B;
-    disc[3] = 0x03 ^ 0x0B;
-    disc[4] = 0x7E;  
+    unsigned char buf[BUF_SIZE] = {0}; 
 
-    // Create string to send
-    unsigned char buf[BUF_SIZE] = {0};
+    int state = 0;
 
-    (void)signal(SIGALRM, alarmHandler);
-    
+    while (STOP == FALSE)
+    {
 
+        if (read(fd, buf, 1) == 0)
+            continue;
 
-    while (alarmCount < 3) {
-        
-        if (alarmEnabled == FALSE) {
-            write(fd, disc, BUF_SIZE);
-            alarmEnabled = TRUE;
-            alarm(3); // Set alarm to be triggered in 3s
-            state = 0;
-        }
-        if (alarmCount == 3)
-            break;
+        changeCloseState(buf[0], &state);
 
-        read(fd, buf, 1);
+        printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
 
-        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
-        changeDiscState(buf[0], &state);
-
-        if (state == 5) {
-            alarm(0);
-            break;
-        }
+        if (state == 5)
+            STOP = TRUE;
     }
-    return 0;
-}*/
+    write(fd, disc, BUF_SIZE);
+    printf("sent discakcnoledge package\n");
+
+}
+
  
 int check_BBC_2 (unsigned char* data,unsigned BBC, int size){
     unsigned tmp = data[0];
@@ -142,6 +209,7 @@ int send_RR (int fd,unsigned char frame_index, int success){
     RR[2] = success ?  tmp : tmp2;
     RR[3] = RR[1] ^ RR[2];
     RR[4] = 0x7E;
+
 
     write(fd,RR,5);
 }
@@ -226,7 +294,7 @@ int llread(int fd, unsigned char* result) {
         printf("0x%02X ", result[i]);
     printf("\n");
 
-    send_RR(fd,frame_index,1); // temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
+    send_RR(fd,frame_index,0); // temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
     
     
     //

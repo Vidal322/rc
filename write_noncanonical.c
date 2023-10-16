@@ -64,7 +64,7 @@ void ReceiverStateMachine(unsigned char buf, int* state_){
         if (buf == 0x85 || buf == 0x05)
             *state_ = 3;
         else if (buf == 0x01|| buf == 0x81)
-            *state_ = 0;
+            *state_ = 6;
         else if (buf != 0x7E)
             *state_ = 0;
         else
@@ -75,7 +75,7 @@ void ReceiverStateMachine(unsigned char buf, int* state_){
             *state_ = 4;
         }
         else if(buf == 0x03^0x81 || buf == 0x03^0x01){
-            *state_ = 6;
+            *state_ = 7;
 
         }
         else if(buf != 0x7E)
@@ -92,6 +92,29 @@ void ReceiverStateMachine(unsigned char buf, int* state_){
     }
 
 
+}
+
+int llclose(int fd){
+    int state = 0;
+    unsigned char disc[BUF_SIZE];
+    unsigned char ua[BUF_SIZE];
+
+    ua[0] = 0x7E;
+    ua[1] = 0x03;
+    ua[2] = 0x07;
+    ua[3] = 0x03 ^ 0x07;
+    ua[4] = 0x7E;  
+
+    disc[0] = 0x7E;
+    disc[1] = 0x03;
+    disc[2] = 0x0B;
+    disc[3] = 0x03 ^ 0x0B;
+    disc[4] = 0x7E;  
+
+    // Create string to send
+    unsigned char buf[BUF_SIZE] = {0};
+
+    (void)signal(SIGALRM, alarmHandler);
 }
 
 void changeOpenState(unsigned char buf, int* state){
@@ -268,18 +291,13 @@ int llwrite(int fd, unsigned char* data, int N, int frame_index) {
 
     while(alarmCount < 3){ 
     
-    while(alarmEnabled == FALSE)
+    if(alarmEnabled == FALSE)
         { 
             printf("Sending frame\n");
     write(fd, frame, frame_size);
     alarmEnabled = TRUE;
     alarm(3);
-
         }
-
-    //for (int i = 0; i < frame_size; i++)
-      //  printf("0x%02X ", frame[i]);
-    //printf("\n");
 
     unsigned char buf[BUF_SIZE] = {0};
     unsigned char buffer[1];
@@ -290,12 +308,17 @@ int llwrite(int fd, unsigned char* data, int N, int frame_index) {
 
         read(fd,buffer,1);
         ReceiverStateMachine(buffer[0],&state_);
-        if(state_ > 0){
+        if(state_ > 0 && state_ <= 5){
             buf[state_ - 1] = buffer[0];
         }
         else if (state_ == 6){
             printf("Recebeu REJ\n");
             printf("Erro\n");
+            state_ = 0;
+        }
+        else if (state_ == 7){
+            printf("Recebeu BBC1 errado\n");
+            printf("Erro\n");   
             return -1;
         }
        // printf("state: %d\n",state_);
