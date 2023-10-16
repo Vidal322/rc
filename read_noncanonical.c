@@ -101,6 +101,50 @@ int llopen(int fd) {
     printf("sent acknowledge package\n");
 }
 
+void close_Read_UA(unsigned char buf, int* state){
+
+    switch(*state) {
+        case 0:
+            if(buf == 0x7E) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == 0x01) {
+                *state = 2;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == 0x07) {
+                *state = 3;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == 0x07 ^ 0x01) {
+                *state = 4;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == 0x7E) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+       
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
 void changeCloseState(unsigned char buf, int* state){
 
     switch(*state) {
@@ -179,7 +223,29 @@ int llclose(int fd){
             STOP = TRUE;
     }
     write(fd, disc, BUF_SIZE);
-    printf("sent discakcnoledge package\n");
+    printf("sent discacknoledge package\n");
+    STOP = FALSE;
+    while (STOP == FALSE)
+    {
+
+        if (read(fd, buf, 1) == 0)
+            continue;
+
+        close_Read_UA(buf[0], &state);
+
+        printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
+
+        if (state == 5){
+            STOP = TRUE; 
+            printf("received UA\n");
+        }
+           
+
+    }
+
+    return 0;
+
+    
 
 }
 
@@ -294,7 +360,7 @@ int llread(int fd, unsigned char* result) {
         printf("0x%02X ", result[i]);
     printf("\n");
 
-    send_RR(fd,frame_index,0); // temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
+    send_RR(fd,frame_index,1); // temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
     
     
     //
@@ -372,9 +438,11 @@ int main(int argc, char *argv[])
     printf("New termios structure set\n");
 
     llopen(fd);
-    unsigned char result[20];
+    unsigned char result[20]; // ele tem de aumentar consoante o tamanho do pacote
 
     llread(fd,result);
+
+    llclose(fd);
 
 
 

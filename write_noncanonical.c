@@ -94,28 +94,6 @@ void ReceiverStateMachine(unsigned char buf, int* state_){
 
 }
 
-int llclose(int fd){
-    int state = 0;
-    unsigned char disc[BUF_SIZE];
-    unsigned char ua[BUF_SIZE];
-
-    ua[0] = 0x7E;
-    ua[1] = 0x03;
-    ua[2] = 0x07;
-    ua[3] = 0x03 ^ 0x07;
-    ua[4] = 0x7E;  
-
-    disc[0] = 0x7E;
-    disc[1] = 0x03;
-    disc[2] = 0x0B;
-    disc[3] = 0x03 ^ 0x0B;
-    disc[4] = 0x7E;  
-
-    // Create string to send
-    unsigned char buf[BUF_SIZE] = {0};
-
-    (void)signal(SIGALRM, alarmHandler);
-}
 
 void changeOpenState(unsigned char buf, int* state){
 
@@ -255,7 +233,6 @@ void changeCloseState(unsigned char buf, int* state) {
 int llclose(int fd) {
  int state = 0;
     unsigned char disc[BUF_SIZE];
-    unsigned char disc[BUF_SIZE];
     unsigned char ua[BUF_SIZE];
     disc[0] = 0x7E;
     disc[1] = 0x03;
@@ -267,7 +244,7 @@ int llclose(int fd) {
     ua[0] = 0x7E;
     ua[1] = 0x01;
     ua[2] = 0x07;
-    ua[3] = 0x03 ^ 0x07;
+    ua[3] = 0x01 ^ 0x07;
     ua[4] = 0x7E;  
 
     // Create string to send
@@ -296,6 +273,7 @@ int llclose(int fd) {
         if (state == 5) {
             alarm(0);
             write(fd, ua, BUF_SIZE);
+            printf("Sent UA\n");
             break;
         }
     }
@@ -510,6 +488,8 @@ int main(int argc, char *argv[])
     llopen(fd);
     
     llwrite(fd,t, 10, 1);
+
+    llclose(fd);
 
     // Restore the old port settings
     if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
