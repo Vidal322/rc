@@ -208,6 +208,101 @@ int llopen(int fd) {
     return 0;
 }
 
+void changeCloseState(unsigned char buf, int* state) {
+
+    switch(*state) {
+        case 0:
+            if(buf == 0x7E) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == 0x01) {
+                *state = 2;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == 0x0B) {
+                *state = 3;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == 0x01 ^ 0x0B) {
+                *state = 4;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == 0x7E) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+       
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
+int llclose(int fd) {
+ int state = 0;
+    unsigned char disc[BUF_SIZE];
+    unsigned char disc[BUF_SIZE];
+    unsigned char ua[BUF_SIZE];
+    disc[0] = 0x7E;
+    disc[1] = 0x03;
+    disc[2] = 0x0B;
+    disc[3] = 0x03 ^ 0x0B;
+    disc[4] = 0x7E;
+
+
+    ua[0] = 0x7E;
+    ua[1] = 0x01;
+    ua[2] = 0x07;
+    ua[3] = 0x03 ^ 0x07;
+    ua[4] = 0x7E;  
+
+    // Create string to send
+    unsigned char buf[BUF_SIZE] = {0};
+
+    (void)signal(SIGALRM, alarmHandler);
+    
+
+
+    while (alarmCount < 3) {
+        
+        if (alarmEnabled == FALSE) {
+            write(fd, disc, BUF_SIZE);
+            alarmEnabled = TRUE;
+            alarm(3); // Set alarm to be triggered in 3s
+            state = 0;
+        }
+        if (alarmCount == 3)
+            break;
+
+        read(fd, buf, 1);
+
+        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
+        changeCloseState(buf[0], &state);
+
+        if (state == 5) {
+            alarm(0);
+            write(fd, ua, BUF_SIZE);
+            break;
+        }
+    }
+    return 0;
+
+}
+
 int specialByteCount(unsigned char* data, int size) {
     int total = 0;
     for(int i = 0; i < size; i++)
