@@ -25,14 +25,53 @@
 volatile int STOP = FALSE;
 
 
+void changeOpenState(unsigned char buf, int* state){
+
+    switch(*state) {
+        case 0:
+            if(buf == 0x7E) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == 0x03) {
+                *state = 2;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == 0x03) {
+                *state = 3;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == 0x03 ^ 0x03) {
+                *state = 4;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == 0x7E) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+       
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
 int llopen(int fd) {
-    unsigned char set[BUF_SIZE];
+
     unsigned char ua[BUF_SIZE];
-    set[0] = 0x7E;
-    set[1] = 0x03;
-    set[2] = 0x03;
-    set[3] = 0x03 ^ 0x03;
-    set[4] = 0x7E;
 
     ua[0] = 0x7E;
     ua[1] = 0x03;
@@ -51,73 +90,167 @@ int llopen(int fd) {
         if (read(fd, buf, 1) == 0)
             continue;
 
-
-        if (buf[0] == set[state])
-            state++;
-        else
-            state = 0;
+        changeOpenState(buf[0], &state);
 
         printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
-
-
 
         if (state == 5)
             STOP = TRUE;
     }
     write(fd, ua, BUF_SIZE);
     printf("sent acknowledge package\n");
-
 }
 
-int close(int fd) {
-     int state = 0;
-    unsigned char ua[BUF_SIZE];
+void close_Read_UA(unsigned char buf, int* state){
+
+    switch(*state) {
+        case 0:
+            if(buf == 0x7E) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == 0x01) {
+                *state = 2;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == 0x07) {
+                *state = 3;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == 0x07 ^ 0x01) {
+                *state = 4;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == 0x7E) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+       
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
+void changeCloseState(unsigned char buf, int* state){
+
+    switch(*state) {
+        case 0:
+            if(buf == 0x7E) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == 0x03) {
+                *state = 2;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == 0x0B) {
+                *state = 3;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == 0x03 ^ 0x0B) {
+                *state = 4;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == 0x7E) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+       
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
+int llclose(int fd){
     unsigned char disc[BUF_SIZE];
+    unsigned char ua[BUF_SIZE];
+
+    disc[0] = 0x7E;
+    disc[1] = 0x01;
+    disc[2] = 0x0B;
+    disc[3] = 0x0B ^ 0x01;
+    disc[4] = 0x7E;  
 
     ua[0] = 0x7E;
     ua[1] = 0x03;
     ua[2] = 0x07;
-    ua[3] = 0x03 ^ 0x07;
+    ua[3] = 0x07 ^ 0x03;
     ua[4] = 0x7E;  
 
-    disc[0] = 0x7E;
-    disc[1] = 0x03;
-    disc[2] = 0x0B;
-    disc[3] = 0x03 ^ 0x0B;
-    disc[4] = 0x7E;  
+    unsigned char buf[BUF_SIZE] = {0}; 
 
-    // Create string to send
-    unsigned char buf[BUF_SIZE] = {0};
+    int state = 0;
 
-    (void)signal(SIGALRM, alarmHandler);
+    while (STOP == FALSE)
+    {
+
+        if (read(fd, buf, 1) == 0)
+            continue;
+
+        changeCloseState(buf[0], &state);
+
+        printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
+
+        if (state == 5)
+            STOP = TRUE;
+    }
+    write(fd, disc, BUF_SIZE);
+    printf("sent discacknoledge package\n");
+    STOP = FALSE;
+    while (STOP == FALSE)
+    {
+
+        if (read(fd, buf, 1) == 0)
+            continue;
+
+        close_Read_UA(buf[0], &state);
+
+        printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
+
+        if (state == 5){
+            STOP = TRUE; 
+            printf("received UA\n");
+        }
+           
+
+    }
+
+    return 0;
+
     
 
-
-    while (alarmCount < 3) {
-        
-        if (alarmEnabled == FALSE) {
-            write(fd, disc, BUF_SIZE);
-            alarmEnabled = TRUE;
-            alarm(3); // Set alarm to be triggered in 3s
-            state = 0;
-        }
-        if (alarmCount == 3)
-            break;
-
-        read(fd, buf, 1);
-
-        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
-        changeDiscState(buf[0], &state);
-
-        if (state == 5) {
-            alarm(0);
-            break;
-        }
-    }
-    return 0;
 }
+
  
-int check_XOR (unsigned char* data,unsigned BBC, int size){
+int check_BBC_2 (unsigned char* data,unsigned BBC, int size){
     unsigned tmp = data[0];
     for(int i = 1; i<size ; i++){
         tmp ^= data[i];
@@ -125,14 +258,32 @@ int check_XOR (unsigned char* data,unsigned BBC, int size){
     return tmp == BBC;
 }
 
+//int check_BBC ()
+
 int untsuffArray(unsigned char* array) {
 
 }
 
+int send_RR (int fd,unsigned char frame_index, int success){
+    unsigned char tmp = frame_index == 0 ? 0x85 : 0x05;
+    unsigned char tmp2 = frame_index == 0 ? 0x01 : 0x81; //MUDAR DE NOVO
+    
+    unsigned char RR[5];
 
-void changeReadState(unsigned char buf, int* state, int* index){
+    RR[0] = 0x7E;
+    RR[1] = 0x03;
+    RR[2] = success ?  tmp : tmp2;
+    RR[3] = RR[1] ^ RR[2];
+    RR[4] = 0x7E;
 
-    switch(*state) {
+
+    write(fd,RR,5);
+}
+
+
+void changeReadState(unsigned char buf, int* state, int* index,unsigned char* frame_index){
+
+    switch(*state) { // tem que retornar os RR e as outras ceans do genero
         case 0:
             if(buf == 0x7E) {
                 *state = 1;
@@ -148,14 +299,20 @@ void changeReadState(unsigned char buf, int* state, int* index){
             else *state = 1;
             break;
         case 2:
-            if(buf == 0x00 || buf == 0x40) {
+            if(buf == 0x00) {
                 *state = 3;
-            } else if(buf != 0x7E) {
+                *frame_index = 0;}
+            
+                else if (buf == 0x40){
+                    *state = 3;
+                    *frame_index = 1;
+                } 
+             else if(buf != 0x7E) {
                 *state = 0;
             } else *state = 1;
             break;
         case 3:
-            if(buf == 0x43 || buf == 0x03) {
+            if(buf == 0x43 || buf == 0x03) { // meter a enviar o RRJ
                 *state = 4;
             } else if(buf != 0x7E) {
                 *state = 0;
@@ -171,30 +328,42 @@ void changeReadState(unsigned char buf, int* state, int* index){
         case 5: 
             if(buf == 0x7E)
                 *state = 6;
-            break;            
+             // nao esquecer aquele byte no final temos de mudar isto
+            break; 
+ 
 
         default:
             *state = 0;
             break;
     }
+
+    if (*state > 0) (*index)++;
 }
 
 
 int llread(int fd, unsigned char* result) {
     unsigned char buf[1];
-    int state = 0, index = 0;
+    int state = 0, index = -1;
     int size;
+    unsigned char frame_index;
 
     while(state != 6) {
         read(fd, buf, 1);
-        changeReadState(buf[0], &state, &index);
-
+        printf("buf: 0x%02X \n",buf[0]);
+        changeReadState(buf[0], &state, &index, &frame_index);
+        printf("INDEX:%d  STATE: %d  SIZE: %d FRAME: %d\n",index,state,size,frame_index);
         if (state > 0)
             result[index] = buf[0];
-
     }
     size = index + 1;
-    printf("")
+     for (int i = 0; i < size; i++)
+        printf("0x%02X ", result[i]);
+    printf("\n");
+
+    send_RR(fd,frame_index,1); // temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
+    
+    
+    //
 
 }
 
@@ -268,7 +437,12 @@ int main(int argc, char *argv[])
 
     printf("New termios structure set\n");
 
-    //llopen(fd);
+    llopen(fd);
+    unsigned char result[20]; // ele tem de aumentar consoante o tamanho do pacote
+
+    llread(fd,result);
+
+    llclose(fd);
 
 
 
