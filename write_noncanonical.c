@@ -7,6 +7,8 @@
 #include <termios.h>
 #include <unistd.h>
 #include <signal.h>
+#include <string.h>
+
 
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
@@ -183,6 +185,7 @@ int llopen(int fd) {
             break;
         }
     }
+    printf("llopen  - write\n");
     return 0;
 }
 
@@ -273,10 +276,11 @@ int llclose(int fd) {
         if (state == 5) {
             alarm(0);
             write(fd, ua, BUF_SIZE);
-            printf("Sent UA\n");
+            //printf("Sent UA\n");
             break;
         }
     }
+    printf("llclose - write\n");
     return 0;
 
 }
@@ -306,8 +310,6 @@ int stuffArray(unsigned char* data,unsigned char* res, int size) {
     }
     return 0;
 }
-
-#include <string.h>
 
 unsigned char calc_BBC_2 (unsigned char* data, unsigned char* newData, int size) {
     unsigned char res = data[0];
@@ -364,12 +366,11 @@ int llwrite(int fd, unsigned char* data, int N, int frame_index) {
 
     while(alarmCount < 3){ 
     
-    if(alarmEnabled == FALSE)
-        { 
-            printf("Sending frame\n");
-    write(fd, frame, frame_size);
-    alarmEnabled = TRUE;
-    alarm(3);
+    if(alarmEnabled == FALSE){ 
+        printf("Sending frame\n");
+        write(fd, frame, frame_size);
+        alarmEnabled = TRUE;
+        alarm(3);
         }
 
     unsigned char buf[BUF_SIZE] = {0};
@@ -377,7 +378,6 @@ int llwrite(int fd, unsigned char* data, int N, int frame_index) {
     int state_ = 0;
    
     while(state_ != 5 && alarmEnabled == TRUE){
-
 
         read(fd,buffer,1);
         ReceiverStateMachine(buffer[0],&state_);
@@ -399,8 +399,8 @@ int llwrite(int fd, unsigned char* data, int N, int frame_index) {
         //printf("x0%02X-",buffer[0]);
     }
     if(state_ == 5){
-        printf("Recebeu RR\n");
-        printf("Sucesso\n");
+        //printf("Recebeu RR\n");
+        printf("llwrite\n");
         alarm(0);
         return 0;
     }

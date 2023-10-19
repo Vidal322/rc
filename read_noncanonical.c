@@ -260,19 +260,46 @@ int check_BBC_2 (unsigned char* data,unsigned BBC, int size){
 
 //int check_BBC ()
 
-int untsuffArray(unsigned char* array) {
-
+int unstuffArray(unsigned char* data, unsigned char* res, int size) {
+    int j = 0, i = 0;
+    for (i = 0; i < size; i++) {
+        if (data[i] == 0x7D && i + 1 < size && (data[i+1] == 0x5E || data[i+1] == 0x5D)) {
+            if (data[i+1] == 0x5E)
+                res[j] = 0x7E;
+            else
+                res[j] = 0x7D;
+            i++; 
+        }
+        else
+            res[j] = data[i];
+        j++;
+    }
+    return 0;
 }
 
-int send_RR (int fd,unsigned char frame_index, int success){
+int send_RR (int fd,unsigned char frame_index){
     unsigned char tmp = frame_index == 0 ? 0x85 : 0x05;
-    unsigned char tmp2 = frame_index == 0 ? 0x01 : 0x81; //MUDAR DE NOVO
     
     unsigned char RR[5];
 
     RR[0] = 0x7E;
     RR[1] = 0x03;
-    RR[2] = success ?  tmp : tmp2;
+    RR[2] = tmp;
+    RR[3] = RR[1] ^ RR[2];
+    RR[4] = 0x7E;
+
+
+    write(fd,RR,5);
+}
+
+int send_REJ (int fd,unsigned char frame_index){
+    unsigned char tmp = frame_index == 0 ? 0x01 : 0x81; //MUDAR DE NOVO
+    
+    unsigned char RR[5];
+
+    RR[0] = 0x7E;
+    RR[1] = 0x03;
+    RR[2] = tmp;
     RR[3] = RR[1] ^ RR[2];
     RR[4] = 0x7E;
 
@@ -281,7 +308,10 @@ int send_RR (int fd,unsigned char frame_index, int success){
 }
 
 
-void changeReadState(unsigned char buf, int* state, int* index,unsigned char* frame_index){
+
+
+
+void changeReadState(unsigned char buf, int* state, int* index){
 
     switch(*state) { // tem que retornar os RR e as outras ceans do genero
         case 0:
@@ -295,32 +325,42 @@ void changeReadState(unsigned char buf, int* state, int* index,unsigned char* fr
             } 
             else if(buf != 0x7E) {
                 *state = 0;
+                *index = 0;
             } 
-            else *state = 1;
+            else { 
+                *state = 1;
+                *index = 0;
+            }
             break;
         case 2:
-            if(buf == 0x00) {
+            if(buf == 0x00 || buf == 0x40) {
                 *state = 3;
                 *frame_index = 0;}
             
-                else if (buf == 0x40){
-                    *state = 3;
-                    *frame_index = 1;
-                } 
              else if(buf != 0x7E) {
                 *state = 0;
-            } else *state = 1;
+                *index = 0;
+
+            } else {
+                *state = 1;
+                *index = 0;
+                }
             break;
         case 3:
-            if(buf == 0x43 || buf == 0x03) { // meter a enviar o RRJ
+            if(buf == 0x43 || buf == 0x03) {
                 *state = 4;
             } else if(buf != 0x7E) {
                 *state = 0;
-            } else *state = 1;
+                *index = 0;
+            } else {
+                *state = 1;
+                *index = 0; 
+                }
             break;
         case 4:
             if(buf == 0x7E) {
                 *state = 1;
+                *index = 0;
             } else {
                 *state = 5;
             }
@@ -328,7 +368,6 @@ void changeReadState(unsigned char buf, int* state, int* index,unsigned char* fr
         case 5: 
             if(buf == 0x7E)
                 *state = 6;
-             // nao esquecer aquele byte no final temos de mudar isto
             break; 
  
 
@@ -336,31 +375,53 @@ void changeReadState(unsigned char buf, int* state, int* index,unsigned char* fr
             *state = 0;
             break;
     }
+}
 
-    if (*state > 0) (*index)++;
+int validate_data(unsigned char* data, int* valid_header, int* duplicate, int* valid_data, int frame_index) {        //retorna 1 se for válido
+    valid_header = 1;
+    if (data[1] ^ data[2] != data[3]) {
+        valid_header == 0;
+        return 0;
+    }
+    duplicate = 0;
+    if (data[2] == frame_index){
+        duplicate = 1;             //ver se é assim
+        return 0;
+    }
+    valid_data = 0;
+    int i = 0;
+    while(data[i] != 0x7E) {
+
+    }
+
+    return 0;
+    
+
+
 }
 
 
-int llread(int fd, unsigned char* result) {
+int llread(int fd, unsigned char* result,unsigned char* frame_index) {
     unsigned char buf[1];
-    int state = 0, index = -1;
+    int state = 0, index = 0;
     int size;
-    unsigned char frame_index;
 
     while(state != 6) {
         read(fd, buf, 1);
-        printf("buf: 0x%02X \n",buf[0]);
-        changeReadState(buf[0], &state, &index, &frame_index);
-        printf("INDEX:%d  STATE: %d  SIZE: %d FRAME: %d\n",index,state,size,frame_index);
+        //printf("buf: 0x%02X \n",buf[0]);
+        changeReadState(buf[0], &state, &index);
+        //printf("INDEX:%d  STATE: %d  SIZE: %d FRAME: %d\n",index,state,size,frame_index);
         if (state > 0)
-            result[index] = buf[0];
+            result[index++] = buf[0];
     }
-    size = index + 1;
-     for (int i = 0; i < size; i++)
+    size = index;  // fazer uma função que consoante o size da trama deve aumentar o tamanho do result
+    /* for (int i = 0; i < size; i++)
         printf("0x%02X ", result[i]);
-    printf("\n");
+    printf("\n");*/
 
-    send_RR(fd,frame_index,1); // temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
+    
+    
+    send_RR(fd,frame_index); // temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
     
     
     //
@@ -437,22 +498,15 @@ int main(int argc, char *argv[])
 
     printf("New termios structure set\n");
 
+
+    unsigned char frame_index = 0;
+
     llopen(fd);
     unsigned char result[20]; // ele tem de aumentar consoante o tamanho do pacote
 
-    llread(fd,result);
+    llread(fd,result, &frame_index);
 
     llclose(fd);
-
-
-
-
-
-
-
-
-
-
 
 
 
