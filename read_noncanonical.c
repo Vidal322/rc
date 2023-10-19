@@ -334,8 +334,7 @@ void changeReadState(unsigned char buf, int* state, int* index){
             break;
         case 2:
             if(buf == 0x00 || buf == 0x40) {
-                *state = 3;
-                *frame_index = 0;}
+                *state = 3;}
             
              else if(buf != 0x7E) {
                 *state = 0;
