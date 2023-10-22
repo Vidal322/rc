@@ -258,11 +258,10 @@ int check_BBC_2 (unsigned char* data,unsigned BBC, int size){
     return tmp == BBC;
 }
 
-//int check_BBC ()
 
 int unstuffArray(unsigned char* data, unsigned char* res, int size) {
     int j = 0, i = 0;
-    for (i = 0; i < size; i++) {
+    for (i = 4; i < size-1; i++) {
         if (data[i] == 0x7D && i + 1 < size && (data[i+1] == 0x5E || data[i+1] == 0x5D)) {
             if (data[i+1] == 0x5E)
                 res[j] = 0x7E;
@@ -277,37 +276,31 @@ int unstuffArray(unsigned char* data, unsigned char* res, int size) {
     return 0;
 }
 
-int send_RR (int fd,unsigned char frame_index){
-    unsigned char tmp = frame_index == 0 ? 0x85 : 0x05;
+int send_RR (unsigned char frame_index){
     
     unsigned char RR[5];
 
-    RR[0] = 0x7E;
-    RR[1] = 0x03;
-    RR[2] = tmp;
+    RR[0] = FLAG;
+    RR[1] = A_tx;
+    RR[2] = C_RR1 * frame_index;
     RR[3] = RR[1] ^ RR[2];
-    RR[4] = 0x7E;
-
+    RR[4] = FLAG;
 
     write(fd,RR,5);
 }
 
-int send_REJ (int fd,unsigned char frame_index){
-    unsigned char tmp = frame_index == 0 ? 0x01 : 0x81; //MUDAR DE NOVO
-    
+int send_REJ (unsigned char frame_index){
+
     unsigned char RR[5];
 
-    RR[0] = 0x7E;
-    RR[1] = 0x03;
-    RR[2] = tmp;
+    RR[0] = FLAG;
+    RR[1] = A_tx;
+    RR[2] = C_REJ1 * frame_index;
     RR[3] = RR[1] ^ RR[2];
-    RR[4] = 0x7E;
-
+    RR[4] = FLAG;
 
     write(fd,RR,5);
 }
-
-
 
 
 
@@ -376,34 +369,89 @@ void changeReadState(unsigned char buf, int* state, int* index){
     }
 }
 
-int validate_data(unsigned char* data, int* valid_header, int* duplicate, int* valid_data, int frame_index) {        //retorna 1 se for válido
+int validate_header(unsigned char* data, int* valid_header, int* duplicate, int frame_index) {        //retorna 1 se for válido
     valid_header = 1;
     if (data[1] ^ data[2] != data[3]) {
         valid_header == 0;
         return 0;
     }
     duplicate = 0;
-    if (data[2] == frame_index){
-        duplicate = 1;             //ver se é assim
+    if (data[2] != frame_index){
+        duplicate = 1;             
         return 0;
-    }
-    valid_data = 0;
-    int i = 0;
-    while(data[i] != 0x7E) {
-
     }
 
     return 0;
-    
+}
+int validate_data(unsigned char* res, int* valid_data, int size){
+
+    unsigned char bcc2 = res[size-1];
+    unsigned char res_value = res[0];
+
+    for (int i = 5 ; i < size-2 ; i++){
+
+        res_value ^= res[i];
+    } 
+
+    if(res_value != bcc2)
+        valid_data = 0;
 
 
 }
 
+int packet_validation(int fd, unsigned char* frame_index,unsigned char* data,unsigned char* res,int size){ // 1 - mandar packet para aplicação
+    //validar o header
+    int valid_header,duplicate, valid_data;
+    validate_header(data,&valid_header,&duplicate,frame_index);
+    unstuffArray(data,res,size);
+    validate_data(res,&valid_data,size);
+
+    if(valid_header == 0){
+        printf("invalid header\n");
+        return 0;
+    }
+
+    if(valid_data == 1){
+        send_RR(fd,frame_index);
+
+        if(duplicate == 1){
+            printf("duplicate\n");
+            return 0; 
+            }
+
+        else {
+            printf("not duplicate\n");
+            *frame_index++;
+            *frame_index %= 2;
+            return 1;
+        }
+     
+    }         
+
+    else {
+        if(duplicate == 1){
+            send_RR(fd,frame_index);
+            printf("duplicate\n");
+            return 0; 
+            }
+        else {
+            send_REJ(fd,frame_index);
+            printf("Not Duplicate\n");
+            return 0;
+        }
+
+    }       
+
+    }
+
+
 
 int llread(int fd, unsigned char* result,unsigned char* frame_index) {
-    unsigned char buf[1];
+    int size = 20;
+    unsigned char* received_packet[size];
     int state = 0, index = 0;
-    int size;
+    unsigned char buf[1];
+
 
     while(state != 6) {
         read(fd, buf, 1);
@@ -411,16 +459,16 @@ int llread(int fd, unsigned char* result,unsigned char* frame_index) {
         changeReadState(buf[0], &state, &index);
         //printf("INDEX:%d  STATE: %d  SIZE: %d FRAME: %d\n",index,state,size,frame_index);
         if (state > 0)
-            result[index++] = buf[0];
+            received_packet[index++] = buf[0];
     }
-    size = index;  // fazer uma função que consoante o size da trama deve aumentar o tamanho do result
+  //  size = index;  // fazer uma função que consoante o size da trama deve aumentar o tamanho do result
     /* for (int i = 0; i < size; i++)
         printf("0x%02X ", result[i]);
     printf("\n");*/
 
     
-    
-    send_RR(fd,frame_index); // temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
+   
+    packet_validation(fd,frame_index,received_packet,result,size);// temos de ver como é suposto saber se vai bem ou nao, acho q tem a ver com os bcc e essas cenas mas n tenho a certeza
     
     
     //
@@ -481,9 +529,7 @@ int main(int argc, char *argv[])
     // timeout the reception of the following character(s)
 
     // Now clean the line and activate the settings for the port
-    // tcflush() discards data written to the object referred to
-    // by fd but not transmitted, or data received but not read,
-    // depending on the value of queue_selector:
+    // tcflush() discahttps://go.codetogether.com/#/2dd26d73-91f3-44f6-811b-d42fa3965a51/8lIB97rWTDTEhZmQPQ0ogLe value of queue_selector:
     //   TCIFLUSH - flushes data received but not read.
     tcflush(fd, TCIOFLUSH);
 
@@ -500,12 +546,25 @@ int main(int argc, char *argv[])
 
     unsigned char frame_index = 0;
 
-    llopen(fd);
+    unsigned char t[10];
+    unsigned char res[10];
+    for (int i= 0; i < 10; i++) t[i] = 0xFF; t[6] = 0x7D; t[7] = 0x5D;
+
+    unstuffArray(t,res,10);
+    for(int i = 0 ; i < 5; i++)
+    printf("0x%02X ",res[i]);
+    printf("\n");
+    for(int i = 5 ; i < 10; i++)
+    printf("0x%02X ",t[i]);
+
+    /*llopen(fd);
     unsigned char result[20]; // ele tem de aumentar consoante o tamanho do pacote
 
     llread(fd,result, &frame_index);
 
-    llclose(fd);
+    llclose(fd);*/
+
+
 
 
 
