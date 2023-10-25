@@ -14,7 +14,7 @@ int timeout;
 int tx_frame_index = 0;
 int rx_frame_index = 0;
 int fd;
-int show_stats = 0;
+LinkLayerRole gRole;
 
 // Alarm function handler
 void alarmHandler(int signal)
@@ -31,6 +31,7 @@ void alarmHandler(int signal)
 ////////////////////////////////////////////////
 
 void changeOpenState(unsigned char buf, int* state, LinkLayerRole role){
+    LinkLayerRole grole = gRole;
     if (role == LlTx)
     switch(*state) {
         case 0:
@@ -234,6 +235,7 @@ int llopen(LinkLayer connectionParameters){
     write(fd, ua, CONTROL_BYTE_SIZE);
     printf("sent acknowledge package\n");
     }
+    return 0;
 }
 
 ////////////////////////////////////////////////
@@ -317,6 +319,7 @@ int changeControlPacketState(unsigned char buf, int* state, unsigned char* byte)
             *state = 0;
             break;
     }
+    return 0;
 }
 
 unsigned char readResponse() {
@@ -383,13 +386,10 @@ int llwrite(const unsigned char *buf, int bufSize){
             return frame_size;
         }
         if (result == C_REJ(tx_frame_index))  { 
-            llclose(show_stats);
             return -1; 
             }
-    
-    llclose(show_stats);
-    return -1;
     }
+    return -1;
 }
 
 ////////////////////////////////////////////////
@@ -407,6 +407,7 @@ int send_RR (unsigned char frame_index){
     RR[4] = FLAG;
 
     write(fd,RR,5);
+    return 0;
 }
 
 int send_REJ (unsigned char frame_index){
@@ -420,6 +421,19 @@ int send_REJ (unsigned char frame_index){
     RR[4] = FLAG;
 
     write(fd,RR,5);
+    return 0;
+}
+
+int send_Rx_DISC () {
+    unsigned char rxDisc[5];
+    rxDisc[0] = FLAG;
+    rxDisc[1] = A_rx;
+    rxDisc[2] = C_DISC;
+    rxDisc[3] = rxDisc[1] ^ rxDisc[2];
+    rxDisc[4] = FLAG;
+
+    write(fd, rxDisc, 5);
+    return 0;
 }
 
 int changeReadState(unsigned char buf, int* state, unsigned char* packet){
@@ -430,7 +444,6 @@ int changeReadState(unsigned char buf, int* state, unsigned char* packet){
             index = 0;
             if(buf == FLAG) {
                 *state = 1;
-                
             }
             break;
         case 1:              // Received Flag
@@ -451,9 +464,9 @@ int changeReadState(unsigned char buf, int* state, unsigned char* packet){
                 }
             else if (buf == 0x40 * ((rx_frame_index + 1) % 2)) {
                 send_RR((rx_frame_index + 1) % 2);
+                return 0;
             }
-            
-             else if(buf != FLAG) {
+            else if(buf != FLAG) {
                 *state = 0;
 
             } else {
@@ -497,17 +510,17 @@ int changeReadState(unsigned char buf, int* state, unsigned char* packet){
             break;
         case 5:                         // Received 0x7D
             if (buf == FLAG_COVER_TAG) {
-                packet[index++] = 0x7D;
+                packet[index++] = FLAG_COVER;
             }
             else if (buf == FLAG_TAG) {
-                packet[index++] = 0x7E;
+                packet[index++] = FLAG;
             }
             else if (buf == FLAG) {
-                packet[index++] = 0x7D;
+                packet[index++] = FLAG_COVER;
                 *state = 6;
             }
             else {
-                packet[index++] = 0x7D;
+                packet[index++] = FLAG_COVER;
                 packet[index++] = buf;
             }
             break;
@@ -527,6 +540,8 @@ int llread(unsigned char *packet) {
         if (read(fd, buf, 1) == 0)
             continue;
         size = changeReadState(buf[0], &state, packet);
+        if (size == -1)
+            return -1;
     }
     return size;
 }
@@ -534,7 +549,224 @@ int llread(unsigned char *packet) {
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose(int showStatistics) {
 
-    return 1;
+void changeCloseStateTx(unsigned char buf, int* state) {
+
+    switch(*state) {
+        case 0:
+            if(buf == FLAG) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == A_rx) {
+                *state = 2;
+            } else if(buf != FLAG) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == C_DISC) {
+                *state = 3;
+            } else if(buf != FLAG) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == A_rx ^ C_DISC) {
+                *state = 4;
+            } else if(buf != FLAG) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == FLAG) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+        default:
+            *state = 0;
+            break;
+    }
+}
+
+void changeCloseStateRxDisc(unsigned char buf, int* state){
+
+    switch(*state) {
+        case 0:
+            if(buf == FLAG) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == A_tx) {
+                *state = 2;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == C_DISC) {
+                *state = 3;
+            } else if(buf != FLAG) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == C_DISC ^ A_tx) {
+                *state = 4;
+            } else if(buf != FLAG) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == FLAG) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+       
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
+void changeCloseStateRxUa(unsigned char buf, int* state){
+
+    switch(*state) {
+        case 0:
+            if(buf == FLAG) {
+                *state = 1;
+            }
+            break;
+        case 1:
+            if(buf == A_rx) {
+                *state = 2;
+            } else if(buf != 0x7E) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 2:
+            if(buf == C_UA) {
+                *state = 3;
+            } else if(buf != FLAG) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 3:
+            if(buf == C_UA ^ A_rx) {
+                *state = 4;
+            } else if(buf != FLAG) {
+                *state = 0;
+            } else *state = 1;
+            break;
+        case 4:
+            if(buf == FLAG) {
+                *state = 5;
+            } else {
+                *state = 0;
+            }
+            break;
+       
+
+        default:
+            *state = 0;
+            break;
+    }
+}
+
+int llclose(int showStatistics) {
+    int state = 0;
+    unsigned char tx_disc[BUF_SIZE];
+    unsigned char ua[BUF_SIZE];
+    tx_disc[0] = FLAG;
+    tx_disc[1] = A_tx;
+    tx_disc[2] = C_DISC;
+    tx_disc[3] = tx_disc[1] ^ tx_disc[2];
+    tx_disc[4] = FLAG;
+
+    ua[0] = FLAG;
+    ua[1] = A_tx;
+    ua[2] = C_UA;
+    ua[3] = ua[1] ^ ua[2];
+    ua[4] = FLAG;  
+
+    alarmCount = 0;
+    alarmEnabled = FALSE;
+
+    unsigned char buf[BUF_SIZE] = {0};
+    (void)signal(SIGALRM, alarmHandler);
+
+    if (gRole == LlTx) {                    
+
+    while (alarmCount < 3) {
+        
+        if (alarmEnabled == FALSE) {
+            write(fd, tx_disc, BUF_SIZE);
+            alarmEnabled = TRUE;
+            alarm(3);
+            state = 0;
+        }
+        if (alarmCount == 3)
+            break;
+
+        read(fd, buf, 1);
+
+        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
+        changeCloseStateTx(buf[0], &state);
+
+        if (state == 5) {
+            alarm(0);
+            write(fd, ua, BUF_SIZE);
+            break;
+        }
+    }
+    }
+    else {
+
+        STOP = FALSE;
+        state = 0;
+        while (STOP == FALSE) {
+            if (read(fd, buf, 1) == 0)
+                continue;
+            changeCloseStateRxDisc(buf[0],&state);
+            if (state == 5) {
+                break;
+                           }
+        }
+        alarmCount = 0;
+        alarmEnabled = FALSE;
+        while (alarmCount < 3) {
+        
+        if (alarmEnabled == FALSE) {
+            send_Rx_DISC();
+            alarmEnabled = TRUE;
+            alarm(3);
+            state = 0;
+        }
+        if (alarmCount == 3)
+            break;
+
+        read(fd, buf, 1);
+
+        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
+        changeCloseStateRxUa(buf[0], &state);
+
+        if (state == 5) {
+            alarm(0);
+            break;
+        }
+    }
+    }
+    close(fd);
+    if (state == 5) {
+        //print_stats();
+        return 1;
+    }
+    return -1;
 }
