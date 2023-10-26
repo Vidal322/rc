@@ -115,9 +115,7 @@ void changeOpenState(unsigned char buf, int* state, LinkLayerRole role){
 }
 
 
-int openSerialPort(char* serialPort, int baudrate) {
-    printf("serialPort: %s\n",serialPort);
-  
+int openSerialPort(char* serialPort, int baudrate) {  
 
     int fd = open(serialPort, O_RDWR | O_NOCTTY);
     
@@ -170,7 +168,6 @@ int llopen(LinkLayer connectionParameters){
     alarmEnabled = FALSE;
     alarmCount = 0;
     int state = 0;
-    printf("kkkkk: %s\n",connectionParameters.serialPort);
     fd = openSerialPort(connectionParameters.serialPort, connectionParameters.baudRate);
     timeout = connectionParameters.timeout;
     retransmitions = connectionParameters.nRetransmissions;
@@ -258,7 +255,9 @@ int specialByteCount(unsigned char* data, int size) {
 
 int stuffArray(unsigned char* data,unsigned char* res, int size) {
     int j = 0, i = 0;
+    printf("data:\n");
     for (i = 0; i < size; i++) {
+        printf("0x%02x", data[i]);
         if (data[i] == 0x7E) {
             res[j++] = 0x7D;
             res[j] = 0x5E;
@@ -294,7 +293,7 @@ int changeControlPacketState(unsigned char buf, int* state, unsigned char* byte)
             }
             break;
         case 1:
-            if(buf == A_rx) {
+            if(buf == A_tx) {
                 *state = 2;
             } else if(buf != FLAG) {
                 *state = 0;
@@ -331,8 +330,7 @@ int changeControlPacketState(unsigned char buf, int* state, unsigned char* byte)
 
 
 int llwrite(const unsigned char *buf, int bufSize){
-    printf("\n");
-    printf("SCU");
+    
     unsigned char newData[bufSize + 1];
     calc_BBC_2(buf,newData, bufSize);
     buf = newData;
@@ -342,9 +340,14 @@ int llwrite(const unsigned char *buf, int bufSize){
     int frame_size = 5 + payload_size;
     unsigned char frame[frame_size];
 
-    if (payload_size != bufSize + 1)          // eficiencia
-        stuffArray(buf, payload, bufSize + 1);
-
+    if (payload_size != bufSize + 1) {
+         stuffArray(buf, payload, bufSize + 1);
+         
+       
+     }         // eficiencia
+     else {
+        memcpy(payload,buf,bufSize+1);
+     }
 
     frame[0] = FLAG;                // First Flag
     frame[1] = A_tx;                // A
@@ -358,7 +361,6 @@ int llwrite(const unsigned char *buf, int bufSize){
 
     alarmCount = 0;
     alarmEnabled = FALSE;
-    unsigned char result;
     int state = 0;
     unsigned char byte = 0x00;
     (void)signal(SIGALRM, alarmHandler);
@@ -373,12 +375,14 @@ int llwrite(const unsigned char *buf, int bufSize){
             continue;
 
         changeControlPacketState(buf[0], &state, &byte);
-        if (result == C_RR(tx_frame_index)) {
+        if (byte == C_RR0 || byte == C_RR1) {
+            printf("RR\n");
             tx_frame_index ++;
             tx_frame_index %= 2;
             return frame_size;
         }
-        if (result == C_REJ(tx_frame_index))  { 
+        if (byte == C_REJ0 || byte == C_REJ1)  { 
+            printf("REJ\n");
             return -1; 
             }
     }
@@ -542,7 +546,6 @@ int llread(unsigned char *packet) {
         if (size == -1)
             return -1;
     }
-
    
     return size;
 }

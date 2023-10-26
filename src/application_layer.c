@@ -16,6 +16,7 @@
 int createControlPacket(unsigned char c , unsigned char** controlPacketStart,  int fileSize, const char* filename){
 
     int filenameSize = strlen(filename) + 1; // number of octates of filename
+    printf("Actual Filename: %d\n", filenameSize);
     int numBits = sizeof(int) * 8 - __builtin_clz(fileSize);
     unsigned char fileSizeSize = (numBits + 7) / 8;
 // rounds up to the nearest byte
@@ -35,7 +36,8 @@ int createControlPacket(unsigned char c , unsigned char** controlPacketStart,  i
 }
 
     *controlPacketStart = controlPacket;
-  
+    
+
     return filenameSize + fileSizeSize + 5;
 }
 
@@ -62,35 +64,23 @@ int createControlPacket(unsigned char c , unsigned char** controlPacketStart,  i
 
  int parseControlPacket(unsigned char* packet,  char** filename ,int* size){
 
-    unsigned char fileBytesNameSize = packet[2];
-    
-    unsigned char fileBytesFileSize = packet[4 + fileBytesNameSize];
+    unsigned char filenameSize = packet[2];
+    unsigned char fileSizeSize = packet[4 + filenameSize];
 
-    char* fileName= (char*)malloc(fileBytesNameSize); //posso ter de dar malloc
-    unsigned char fileSize[fileBytesFileSize];
-    printf("app: ");    
-    for (int i = 0; i < 20; i++) {
-        printf("0x%02X ", packet[i]);
+    char* fileName= (char*)malloc(filenameSize);
+    unsigned char fileSize[fileSizeSize];
+
+    memcpy(fileSize,packet + 5 + filenameSize,fileSizeSize);
+
+    for (int i = 0; i < fileSizeSize; i++) {
+        *size |= (fileSize[fileSizeSize - i - 1] << (i * 8));
     }
+    for(int i = 3; i < 3 + filenameSize; i++)
+        printf("%c", packet[i]);
 
-    printf("BEFORE\n");
-
-    memcpy(fileSize,packet + 5 + fileBytesNameSize,fileBytesFileSize);
-
-    for (int i = 0; i < fileBytesFileSize; i++) {
-        *size |= (fileSize[fileBytesFileSize - i - 1] << (i * 8));
-    }
-
-
-    memcpy(fileName,packet + 3,fileBytesNameSize);
-
-    int i = 0;
-    printf("%d",packet[2]);
-    printf("%d", fileBytesNameSize);
-    while(fileName[i] != '\0'){
-        printf("%s",fileName[i]);
-        i++;
-        printf("%d",i);
+    memcpy(fileName,packet + 3,filenameSize);
+    for (int i = 0; i < filenameSize; i++) {
+        printf("%c",fileName[i]);
     }
 
     *filename = fileName;
@@ -119,12 +109,14 @@ int sendFile(int fd,const char* filename){
 
     int controlPacketSize;
     unsigned char* controlPacketStart;
-    printf("\n");
-    printf("Xinado1\n");
     controlPacketSize = createControlPacket(2 ,&controlPacketStart, fileSize, filename); // 2 for start control packet
+
+    printf("Application Layer:\n");
+    for(int i = 0; i< controlPacketSize; i++)
+        printf("0x%02X ", controlPacketStart[i]);
     printf("\n");
-    printf("Xinado");
-    if(llwrite(controlPacketStart, controlPacketSize) != 0){
+
+    if(llwrite(controlPacketStart, controlPacketSize) == -1){
         printf("Error sending control packet\n");
         return -1;
     } // como é que vamos passar o fd?
@@ -200,11 +192,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         case LlRx:
             receiveFile(fd);
             break;
-    }      // TODO
+    }      
 }
 
 int receiveFile(int fd){
-    // n sei como fazer esta merda
+
     unsigned char* packet[DATA_SIZE];
     unsigned char* filename;
     int fileSize;
