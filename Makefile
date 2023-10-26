@@ -3,8 +3,8 @@
 
 # Parameters
 CC = gcc
-CFLAGS = -Wall
-
+#CFLAGS = -Wall
+CFLAGS = -w
 SRC = src/
 INCLUDE = include/
 BIN = bin/
