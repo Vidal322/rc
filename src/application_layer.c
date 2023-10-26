@@ -16,6 +16,7 @@
 int createControlPacket(unsigned char c , unsigned char** controlPacketStart,  int fileSize, const char* filename){
 
     int filenameSize = strlen(filename) + 1; // number of octates of filename
+    printf("Actual Filename: %d\n", filenameSize);
     int numBits = sizeof(int) * 8 - __builtin_clz(fileSize);
     unsigned char fileSizeSize = (numBits + 7) / 8;
 // rounds up to the nearest byte
@@ -27,24 +28,16 @@ int createControlPacket(unsigned char c , unsigned char** controlPacketStart,  i
     controlPacket[2] = filenameSize & 0xFF; // (char)filenameSize/sizeof(char)
     memcpy(controlPacket + 3, filename, filenameSize);
     
-    // bloatbloatbloatbloatbloat
     controlPacket[3 + filenameSize] = 0x01;
     controlPacket[4 + filenameSize] = fileSizeSize; // rounds up to the nearest byte
     
     for (int i = 0; i < fileSizeSize; i++) { //n sei se aqui devo usar filesize +7 >>3
     controlPacket[4 + fileSizeSize + filenameSize - i] = (fileSize >> (i * 8)) & 0xFF;
-    printf("value in hexa -> 0X%02X\n ",controlPacket[4 + fileSizeSize + filenameSize - i]);
 }
 
-
-printf("fileSizeSize %d\n",fileSizeSize);
-printf("File size %d\n", fileSize);
-for( int i = 0; i < 17; i++){
-        printf("0x%02X ",controlPacket[i]);
-    }
-    printf("\n");
-
     *controlPacketStart = controlPacket;
+    
+
     return filenameSize + fileSizeSize + 5;
 }
 
@@ -65,37 +58,32 @@ for( int i = 0; i < 17; i++){
     dataPacket[2] = dataSize >> 8 & 0xFF;
     dataPacket[3] = dataSize & 0xFF;
     memcpy(dataPacket + 4, *dataHolder,1000);
-      printf("1pointer -> %p\n",*dataHolder);
     *dataHolder += 1000;
-      printf("2pointer -> %p\n",*dataHolder);
 
  }
 
- int parseControlPacket(unsigned char* packet,  char* filename ,int* size){
+ int parseControlPacket(unsigned char* packet,  char** filename ,int* size){
 
-    unsigned char fileBytesNameSize = packet[2];
-    printf("packet %d\n",packet[2]);
-    unsigned char fileBytesFileSize = packet[4 + fileBytesNameSize];
-printf("packet %d\n",fileBytesFileSize);    
-    unsigned char fileName[fileBytesNameSize]; //posso ter de dar malloc
-    unsigned char fileSize[fileBytesFileSize];
+    unsigned char filenameSize = packet[2];
+    unsigned char fileSizeSize = packet[4 + filenameSize];
 
-    memcpy(fileSize,packet + 5 + fileBytesNameSize,fileBytesFileSize);
-    for( int i = 0; i < fileBytesFileSize; i++){
-        printf("0x%02X ",fileSize[i]);
+    char* fileName= (char*)malloc(filenameSize);
+    unsigned char fileSize[fileSizeSize];
+
+    memcpy(fileSize,packet + 5 + filenameSize,fileSizeSize);
+
+    for (int i = 0; i < fileSizeSize; i++) {
+        *size |= (fileSize[fileSizeSize - i - 1] << (i * 8));
     }
-    printf("\n");
+    for(int i = 3; i < 3 + filenameSize; i++)
+        printf("%c", packet[i]);
 
-   
-    for (int i = 0; i < fileBytesFileSize; i++) {
-        *size |= (fileSize[fileBytesFileSize - i - 1] << (i * 8));
-        printf("cenas --> %d",fileSize[fileBytesFileSize - i - 1]);
+    memcpy(fileName,packet + 3,filenameSize);
+    for (int i = 0; i < filenameSize; i++) {
+        printf("%c",fileName[i]);
     }
 
-    memcpy(fileName,packet + 3,fileBytesNameSize);
-    filename = fileName;
-
-    
+    *filename = fileName;
     return 0;
  }
 
@@ -108,7 +96,7 @@ printf("packet %d\n",fileBytesFileSize);
 
 int sendFile(int fd,const char* filename){
     FILE* file = fopen(filename, "rb");
-    printf("merda");
+    
     if (file == NULL)
     {
         printf("Error opening file\n");
@@ -121,9 +109,14 @@ int sendFile(int fd,const char* filename){
 
     int controlPacketSize;
     unsigned char* controlPacketStart;
-    controlPacketSize = createControlPacket(2 ,controlPacketStart, fileSize, filename); // 2 for start control packet
+    controlPacketSize = createControlPacket(2 ,&controlPacketStart, fileSize, filename); // 2 for start control packet
 
-    if(llwrite(controlPacketStart, controlPacketSize) != 0){
+    printf("Application Layer:\n");
+    for(int i = 0; i< controlPacketSize; i++)
+        printf("0x%02X ", controlPacketStart[i]);
+    printf("\n");
+
+    if(llwrite(controlPacketStart, controlPacketSize) == -1){
         printf("Error sending control packet\n");
         return -1;
     } // como é que vamos passar o fd?
@@ -171,48 +164,63 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
 
-    LinkLayer linkLayer = {
-        .serialPort = serialPort,
-        .baudRate = baudRate,
-        .nRetransmissions = nTries,
-        .timeout = timeout,
-        .role = strcmp(role, "tx") == 0 ? LlTx : LlRx,
-    };
+    LinkLayer linkLayer;
 
+       strcpy(linkLayer.serialPort,serialPort);
+       linkLayer.baudRate = baudRate;
+       linkLayer.nRetransmissions = nTries;
+       linkLayer.timeout = 1;
+       linkLayer.role = strcmp(role, "tx") == 0 ? LlTx : LlRx;
+    
+
+  
     int fd = llopen(linkLayer);
     if (fd < 0)
     {
+
         printf("Error opening connection\n");
         return;
     }
+    
+  
 
     switch(linkLayer.role)
     {
         case LlTx:
-            sendFile(fd, filename);
+                   sendFile(fd, filename);
             break;
         case LlRx:
-           // receiveFile(fd);
+            receiveFile(fd);
             break;
-    }      // TODO
+    }      
 }
 
 int receiveFile(int fd){
-    // n sei como fazer esta merda
-    unsigned char* packet;
+
+    unsigned char* packet[DATA_SIZE];
     unsigned char* filename;
     int fileSize;
     int controlCheck = FALSE;
     int totalPackets;
     int packetsCount = 0;
     int actualPacketSize;
-    llread(packet);    
-    parseControlPacket(packet,filename,&fileSize);
+    llread(packet); 
+
+    
+    parseControlPacket(packet,&filename,&fileSize);
+     int i = 0;
+     
+        printf("%s",filename[i]);
+        i++;
+        printf("%d",i);
+    
+    printf("%d",i);
     totalPackets = (fileSize + 1023) / 1024;
     
     FILE* receiverFile = fopen((char*) filename, "wb+");
 
     while(packetsCount < totalPackets){
+        printf("%d\n",packetsCount);
         
         if (actualPacketSize = llread(packet) == -1)
             continue;
@@ -230,4 +238,3 @@ int receiveFile(int fd){
 
     return 0;
 }
-   

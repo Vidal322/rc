@@ -6,6 +6,8 @@
 
 #include <signal.h>
 #include <termios.h>
+#include <fcntl.h>
+
 typedef enum
 {
     LlTx,
@@ -33,8 +35,8 @@ typedef struct
 #define CONTROL_BYTE_SIZE 5
 
 #define O_WRONLY	     01
-#define O_RDWR		     02
-#define O_NOCTTY	   0400
+//#define O_RDWR		     02
+//#define O_NOCTTY	   0400
 
 
 #define FLAG 0x7E
@@ -57,20 +59,11 @@ typedef struct
 #define C_DISC 0x0B 
 #define C_F1 0x00  // Frame number 0
 #define C_F2 0x40  // Frame number 1
-#
-
 
 
 // Open a connection using the "port" parameters defined in struct linkLayer.
 // Return "1" on success or "-1" on error.
 int llopen(LinkLayer connectionParameters);
-
-
-// connects to a serial port 
-// returns -1 or fd on success 
-int openSerialPort(char* serialPort, int baudrate);
-
-unsigned char readResponse();
 
 // Send data in buf with size bufSize.
 // Return number of chars written, or "-1" on error.

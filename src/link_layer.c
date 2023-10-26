@@ -115,14 +115,16 @@ void changeOpenState(unsigned char buf, int* state, LinkLayerRole role){
 }
 
 
-int openSerialPort(char* serialPort, int baudrate) {
+int openSerialPort(char* serialPort, int baudrate) {  
 
     int fd = open(serialPort, O_RDWR | O_NOCTTY);
-
+    
+    printf("%d",fd);
     if (fd < 0) {
         perror(serialPort);
         exit(-1);
     }
+    
 
     struct termios oldtio;
     struct termios newtio;
@@ -133,6 +135,7 @@ int openSerialPort(char* serialPort, int baudrate) {
         perror("tcgetattr");
         exit(-1);
     }
+
 
     // Clear struct for new port settings
     memset(&newtio, 0, sizeof(newtio));
@@ -171,6 +174,7 @@ int llopen(LinkLayer connectionParameters){
     unsigned char set[CONTROL_BYTE_SIZE];
     unsigned char ua[CONTROL_BYTE_SIZE];
     
+
     set[0] = FLAG;
     set[1] = A_tx;
     set[2] = C_SET;
@@ -251,7 +255,9 @@ int specialByteCount(unsigned char* data, int size) {
 
 int stuffArray(unsigned char* data,unsigned char* res, int size) {
     int j = 0, i = 0;
+    printf("data:\n");
     for (i = 0; i < size; i++) {
+        printf("0x%02x", data[i]);
         if (data[i] == 0x7E) {
             res[j++] = 0x7D;
             res[j] = 0x5E;
@@ -287,7 +293,7 @@ int changeControlPacketState(unsigned char buf, int* state, unsigned char* byte)
             }
             break;
         case 1:
-            if(buf == A_rx) {
+            if(buf == A_tx) {
                 *state = 2;
             } else if(buf != FLAG) {
                 *state = 0;
@@ -322,29 +328,9 @@ int changeControlPacketState(unsigned char buf, int* state, unsigned char* byte)
     return 0;
 }
 
-unsigned char readResponse() {
-    volatile int STOP = FALSE;
-    unsigned char buf[CONTROL_BYTE_SIZE];
-    int state = 0;
-    unsigned char byte;
-    while (STOP == FALSE) {
-
-        if (read(fd, buf, 1) == 0)
-            continue;
-
-        changeControlPacketState(buf[0], &state, &byte);
-        //printf("var = 0x%02X  state = %d \n", (unsigned int)(buf[0] & 0xFF), state);
-        
-        if (state == 5)
-            STOP = TRUE;
-    }
-    printf("read control byte 0x%02X\n", byte);
-    
-    return byte;
-}
 
 int llwrite(const unsigned char *buf, int bufSize){
-
+    
     unsigned char newData[bufSize + 1];
     calc_BBC_2(buf,newData, bufSize);
     buf = newData;
@@ -354,9 +340,14 @@ int llwrite(const unsigned char *buf, int bufSize){
     int frame_size = 5 + payload_size;
     unsigned char frame[frame_size];
 
-    if (payload_size != bufSize + 1)          // eficiencia
-        stuffArray(buf, payload, bufSize + 1);
-
+    if (payload_size != bufSize + 1) {
+         stuffArray(buf, payload, bufSize + 1);
+         
+       
+     }         // eficiencia
+     else {
+        memcpy(payload,buf,bufSize+1);
+     }
 
     frame[0] = FLAG;                // First Flag
     frame[1] = A_tx;                // A
@@ -370,7 +361,8 @@ int llwrite(const unsigned char *buf, int bufSize){
 
     alarmCount = 0;
     alarmEnabled = FALSE;
-    unsigned char result;
+    int state = 0;
+    unsigned char byte = 0x00;
     (void)signal(SIGALRM, alarmHandler);
 
     while(alarmCount < 3 ){ 
@@ -379,13 +371,18 @@ int llwrite(const unsigned char *buf, int bufSize){
         alarmEnabled = TRUE;
         alarm(timeout);
         }
-        result = readResponse();
-        if (result == C_RR(tx_frame_index)) {
+         if (read(fd, buf, 1) == 0)
+            continue;
+
+        changeControlPacketState(buf[0], &state, &byte);
+        if (byte == C_RR0 || byte == C_RR1) {
+            printf("RR\n");
             tx_frame_index ++;
             tx_frame_index %= 2;
             return frame_size;
         }
-        if (result == C_REJ(tx_frame_index))  { 
+        if (byte == C_REJ0 || byte == C_REJ1)  { 
+            printf("REJ\n");
             return -1; 
             }
     }
@@ -436,18 +433,18 @@ int send_Rx_DISC () {
     return 0;
 }
 
-int changeReadState(unsigned char buf, int* state, unsigned char* packet){
+int changeReadState(unsigned char buf, int* state, unsigned char* packet, int* index){
 
-    int index = 0;
+
     switch(*state) { 
         case 0:
-            index = 0;
+            *index = 0;
             if(buf == FLAG) {
                 *state = 1;
             }
             break;
         case 1:              // Received Flag
-            index = 0;           
+            *index = 0;           
             if(buf == A_tx) {
                 *state = 2;
             } 
@@ -488,40 +485,43 @@ int changeReadState(unsigned char buf, int* state, unsigned char* packet){
             }
             else if (buf == FLAG) {
                 *state = 6;
-                unsigned char bcc2 = packet[index--];
+                unsigned char bcc2 = packet[*index];
                 unsigned char xor = packet[0];
-                for (int j = 1; j< index; j++) {
+                for (int j = 1; j< *index; j++) {
                     xor ^= packet[j];
                 }
                 if (bcc2 == xor) {  // Valid data
                     *state = 6;
                     send_RR((rx_frame_index + 1) % 2);
+                    printf("SENT RR\n");
                     rx_frame_index = (rx_frame_index + 1) % 2;
-                    return index;
+                    return *index;
                 }
                 else  {
                     send_REJ(rx_frame_index);
+                    printf("SENT REJ\n");
                     return -1;
                 }
             }
             else {
-                packet[index++] = buf;
+                packet[(*index)++] = buf;
+                
             }
             break;
         case 5:                         // Received 0x7D
             if (buf == FLAG_COVER_TAG) {
-                packet[index++] = FLAG_COVER;
+                packet[(*index)++] = FLAG_COVER;
             }
             else if (buf == FLAG_TAG) {
-                packet[index++] = FLAG;
+                packet[(*index)++] = FLAG;
             }
             else if (buf == FLAG) {
-                packet[index++] = FLAG_COVER;
+                packet[(*index)++] = FLAG_COVER;
                 *state = 6;
             }
             else {
-                packet[index++] = FLAG_COVER;
-                packet[index++] = buf;
+                packet[(*index)++] = FLAG_COVER;
+                packet[(*index)++] = buf;
             }
             break;
         default:
@@ -534,15 +534,19 @@ int changeReadState(unsigned char buf, int* state, unsigned char* packet){
 
 int llread(unsigned char *packet) {
     int state = 0;
+    int i = 0;
     unsigned char buf[1];
-    int size = -1;
+    int size = 0;
+
     while(state != 6) {
         if (read(fd, buf, 1) == 0)
             continue;
-        size = changeReadState(buf[0], &state, packet);
+        changeReadState(buf[0], &state, packet, &size);
+
         if (size == -1)
             return -1;
     }
+   
     return size;
 }
 
