@@ -585,20 +585,20 @@ int llread(unsigned char *packet) {
     int state = 0;
     unsigned char buf[1];
     int size = 0;
-    printf("\nRecieved buf: ");
+    //printf("\nRecieved buf: ");
     while(state != 6) {
         if (read(fd, buf, 1) == 0)
             continue;
-        printf("%02X ",buf[0]);
+        //printf("%02X ",buf[0]);
         changeReadState(buf[0], &state, packet, &size);
         if (size == -1)
             return -1;
     }
-    printf("packet llread: ");
+    /*printf("packet llread: ");
     for(int i = 0 ; i < 20 ; i++){
         printf("%02X ",packet[i]);
     }
-        printf("\nSize: %d\n", size);
+        printf("\nSize: %d\n", size);*/
    
     return size;
 }

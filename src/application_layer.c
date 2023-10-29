@@ -18,6 +18,8 @@
 
 #define DATA_SIZE 1000
 
+const char* receiverFileName;
+
 int createControlPacket(unsigned char c , unsigned char** controlPacketStart, long int fileSize, const char* filename){
 
     int filenameSize = strlen(filename) + 1; // number of octates of filename
@@ -93,15 +95,18 @@ char* parseControlPacket(unsigned char* packet , long int* size){
         
     unsigned char filenameSize = packet[2];
     unsigned char fileSizeSize = packet[4 + filenameSize];
-    printf("fileSizeSize: %d\n",fileSizeSize);
+    printf("\nfileSizeSize: %d\n",fileSizeSize);
 
     char* fileName= (char*)malloc(filenameSize);
     unsigned char* fileSize = (unsigned char*)malloc(fileSizeSize);
   
+    //parsedControlPacket:02 00 0C 70 65 6E 67 75 69 6E 2E 67 69 66 00 01 02 2A D8 D7 
+    //parsedControlPacket:01 02 03 CC 04 A7 7E 0B 57 83 F1 17 33 0D F0 11 AD 37 E4 EE 
 
     memcpy(fileSize,packet + 5 + filenameSize,fileSizeSize);
     
-    printf("sizee: %li\n",*size);
+    printf("size: %li\n",*size);
+    printf("fileSizeSize: %02x\n",fileSizeSize);
     for (int i = 0; i < fileSizeSize; i++) {
         *size |= (fileSize[fileSizeSize - i - 1] << (i * 8));
         printf("size: %li\n",*size);
@@ -173,6 +178,7 @@ int sendFile(int fd,const char* filename){
     
     unsigned char* dataHolder = (unsigned char*)malloc(fileSize);
     getData(dataHolder,file,fileSize);
+    fclose(file);
     long int data_rest = fileSize % DATA_SIZE;
     long int data_size = 0;
     long int packet_size = 0;
@@ -229,7 +235,7 @@ int receiveFile(int fd){
     char* filename;
     long int fileSize = 0;
     long int totalPackets = 0;
-    long int packetsCount = 0;
+    int packetsCount = 0;
     long int actualPacketSize = 0;
     llread(packet); 
 
@@ -250,52 +256,38 @@ int receiveFile(int fd){
     totalPackets = (fileSize + DATA_SIZE - 1) / DATA_SIZE;
     printf("\nTotalPackets: %li\n",totalPackets);
     
-    FILE* receiverFile = fopen(filename, "wb+");
-    if (receiverFile == NULL)
-    {
+    FILE* receiverFile = fopen(receiverFileName, "wb+");
+    if (receiverFile == NULL) {
         printf("Error opening file\n");
         return -1;
     }
     char* fn;
     while(packetsCount < totalPackets){
-        printf("packet count : %li\n",packetsCount);
     
-        if ((actualPacketSize = llread(packet)) == -1){
+        if ((actualPacketSize = llread(packet)) == 0)
+            continue;
+        else if (actualPacketSize == -1) {
             printf("Error receiving data packet\n");
             return -1;
         }
-        
-        if ((actualPacketSize = llread(packet)) == 0)
-            continue;
+        printf("packet count : %i\n",packetsCount);
+        packetsCount++;
         unsigned char *data = (unsigned char*) malloc(actualPacketSize);
         parseDataPacket(packet,data,actualPacketSize);
-        packetsCount++;
 
         printf("\nparsed the Data\n");
         fwrite(data, sizeof(unsigned char),  actualPacketSize, receiverFile);
         free(data);
-        if (packet[0] == 3) {
-            printf("End Packet\n");   
-                fn = parseControlPacket(packet,&fileSize);      
-            if (strcmp(fn,filename) != 0){
-                printf("filenameOnClose: %s\n",fn);
-                printf("filename: %s\n",filename);
-                printf("different filenames: %d\n",strcmp(fn,filename));
-                printf("Error receiving control packet\n");
-                return -1;
-            }
-            break;
-        }
     }
-    printf("here\n");
-    /*if (parseControlPacket(packet, &fileSize) != filename)
-    {
+    fclose(receiverFile);
+    while(llread(packet) == 0);
+    fn = parseControlPacket(packet,&fileSize);
+    if (strcmp(fn,filename) != 0) {
         printf("Error receiving control packet\n");
         return -1;
-    }*/
+    }
     free(filename);
     free(fn);
-    printf("Vai mandar para o llclose\n");
     llclose(0);
     
 
@@ -315,6 +307,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
        linkLayer.role = strcmp(role, "tx") == 0 ? LlTx : LlRx;
     
 
+    receiverFileName = filename;
   
     int fd = llopen(linkLayer);
     if (fd < 0)
