@@ -3,7 +3,7 @@
 
 # Parameters
 CC = gcc
-CFLAGS = -Wall -g #-fsanitize=address 
+CFLAGS = -Wall -fsanitize=address 
 
 SRC = src/
 INCLUDE = include/
