@@ -65,9 +65,9 @@ int createControlPacket(unsigned char c , unsigned char** controlPacketStart, lo
 
 int getData(unsigned char* dataHolder, FILE* file, size_t fileSize){
     
-   printf("data file pointer 1: %p\n",file);
+   //printf("data file pointer 1: %p\n",file);
    fread(dataHolder,sizeof(unsigned char),fileSize,file);
-   printf("data file pointer 2: %p\n",file);
+   //printf("data file pointer 2: %p\n",file);
        
    return 0;
  }
@@ -81,7 +81,7 @@ unsigned char* createDataPacket(unsigned char* dataHolder, size_t dataSize){
     dataPacket[2] = dataSize >> 8 & 0xFF;
     dataPacket[3] = dataSize & 0xFF;
     memcpy(dataPacket + 4, dataHolder, dataSize-4);
-    printf("Dataholder pointer: %p\n",dataHolder);
+    //printf("Dataholder pointer: %p\n",dataHolder);
    
     return dataPacket;
  }
@@ -120,7 +120,7 @@ char* parseControlPacket(unsigned char* packet , long int* size){
 
  int parseDataPacket(unsigned char* packet,unsigned char* data, long int size){
     printf("Cenas");
-    memcpy(data,packet,size - 1); //podemos mudar isto para usar a info de packet
+    memcpy(data,packet + 4,size); //podemos mudar isto para usar a info de packet
     return 0;
 
  }
@@ -189,7 +189,7 @@ int sendFile(int fd,const char* filename){
         //create datapacket , filesize - data_size , senddatpacket
         data_size = fileSize2 > DATA_SIZE ? DATA_SIZE : data_rest;
         printf("DataHolder :%li\n",fileSize2);
-        printf("data_size: %li\n",data_size);
+        //printf("data_size: %li\n",data_size);
 
         packet_size = data_size + 4;
 
@@ -203,7 +203,7 @@ int sendFile(int fd,const char* filename){
 
         dataPacket = createDataPacket(dataHolder,packet_size);
 
-        printf("dataPacket pointer: %p\n",dataPacket);
+        //printf("dataPacket pointer: %p\n",dataPacket);
         if(llwrite(dataPacket,packet_size) == -1){
             printf("Error sending data packet\n");
             return -1;
@@ -272,11 +272,12 @@ int receiveFile(int fd){
         }
         printf("packet count : %i\n",packetsCount);
         packetsCount++;
+        actualPacketSize -= 5;
         unsigned char *data = (unsigned char*) malloc(actualPacketSize);
         parseDataPacket(packet,data,actualPacketSize);
 
         printf("\nparsed the Data\n");
-        fwrite(data, sizeof(unsigned char),  actualPacketSize, receiverFile);
+        fwrite(data, sizeof(unsigned char),  actualPacketSize - 5, receiverFile);
         free(data);
     }
     fclose(receiverFile);

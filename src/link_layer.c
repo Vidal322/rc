@@ -300,7 +300,7 @@ int stuffArray(const unsigned char* data,unsigned char* res, int size) {
     int j = 0, i = 0;
     printf("data:\n");
     for (i = 0; i < size; i++) {
-        printf("%02x ", data[i]);
+        //printf("%02x ", data[i]);
         if (data[i] == 0x7E) {
             res[j++] = 0x7D;
             res[j] = 0x5E;
@@ -323,7 +323,7 @@ unsigned char calc_BBC_2 (const unsigned char* data, unsigned char* newData, int
         res ^= data[i];
         newData[i] = data[i];
     }
-    printf("BBC_2 : %02X\n",res);
+    //printf("BBC_2 : %02X\n",res);
 
     newData[size] = res;
 
@@ -394,8 +394,8 @@ int llwrite(const unsigned char *buf, int bufSize){
     frame[1] = A_tx;                // A
     frame[2] = tx_frame_index * 0x40;  // N(s)
     frame[3] = frame[1] ^ frame[2]; // BCC1 
-    printf("N(s): 0x%02X ",frame[2]);
-    printf("BCC1: 0x%02X ",frame[3]);
+    //printf("N(s): 0x%02X ",frame[2]);
+    //printf("BCC1: 0x%02X ",frame[3]);
     memcpy(frame + 4, payload, payload_size);
     frame[frame_size - 1] = FLAG;   // Final Flag
 
@@ -415,7 +415,7 @@ int llwrite(const unsigned char *buf, int bufSize){
         }
          if (read(fd, buffer, 1) == 0)
             continue;
-        printf("%02X ",buffer[0]);
+        //printf("%02X ",buffer[0]);
         changeControlPacketState(buffer[0], &state, &byte);
         if (state != 5)
             continue;
@@ -738,15 +738,22 @@ void changeCloseStateRxUa(unsigned char buf, int* state){
 }
 
 int llclose(int showStatistics) {
-    printf("ESTÁ A ACABAR PUTA\n");
+    printf("ESTÁ A ACABAR\n");
     int state = 0;
     unsigned char tx_disc[BUF_SIZE];
     unsigned char ua[BUF_SIZE];
+    unsigned char rx_disc[BUF_SIZE];
     tx_disc[0] = FLAG;
     tx_disc[1] = A_tx;
     tx_disc[2] = C_DISC;
     tx_disc[3] = tx_disc[1] ^ tx_disc[2];
     tx_disc[4] = FLAG;
+    
+    rx_disc[0] = FLAG;
+    rx_disc[1] = A_rx;
+    rx_disc[2] = C_DISC;
+    rx_disc[3] = rx_disc[1] ^ rx_disc[2];
+    rx_disc[4] = FLAG;
 
     ua[0] = FLAG;
     ua[1] = A_tx;
@@ -773,9 +780,10 @@ int llclose(int showStatistics) {
         if (alarmCount == 3)
             break;
 
-        read(fd, buf, 1);
-
+        if (read(fd, buf, 1) == 0) continue;
         changeCloseStateTx(buf[0], &state);
+        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
+
 
         if (state == 5) {
             alarm(0);
@@ -795,14 +803,13 @@ int llclose(int showStatistics) {
             if (state == 5) {
                 STOP = TRUE;
                            }
-            printf("%i ", state);
         }
         alarmCount = 0;
         alarmEnabled = FALSE;
         while (alarmCount < retransmitions) {
         
         if (alarmEnabled == FALSE) {
-            send_Rx_DISC();
+            write(fd, rx_disc, BUF_SIZE);
             alarmEnabled = TRUE;
             alarm(3);
             state = 0;
@@ -810,7 +817,7 @@ int llclose(int showStatistics) {
         if (alarmCount == 3)
             break;
 
-        read(fd, buf, 1);
+        if (read(fd, buf, 1) == 0) continue;
 
         //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
         changeCloseStateRxUa(buf[0], &state);
@@ -828,7 +835,7 @@ int llclose(int showStatistics) {
 
         return 1;
     }
-    printf("ACABOU MAL PUTA\n");
+    printf("ACABOU MAL\n");
 
     return -1;
 }
