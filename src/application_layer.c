@@ -277,7 +277,7 @@ int receiveFile(int fd){
         parseDataPacket(packet,data,actualPacketSize);
 
         printf("\nparsed the Data\n");
-        fwrite(data, sizeof(unsigned char),  actualPacketSize - 5, receiverFile);
+        fwrite(data, sizeof(unsigned char),  actualPacketSize, receiverFile);
         free(data);
     }
     fclose(receiverFile);

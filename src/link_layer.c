@@ -216,7 +216,7 @@ int llopen(LinkLayer connectionParameters){
     retransmitions = connectionParameters.nRetransmissions;
     unsigned char set[CONTROL_BYTE_SIZE];
     unsigned char ua[CONTROL_BYTE_SIZE];
-    
+    gRole = connectionParameters.role;
 
     set[0] = FLAG;
     set[1] = A_tx;
@@ -740,6 +740,7 @@ void changeCloseStateRxUa(unsigned char buf, int* state){
 int llclose(int showStatistics) {
     printf("ESTÁ A ACABAR\n");
     int state = 0;
+    int count = 0;
     unsigned char tx_disc[BUF_SIZE];
     unsigned char ua[BUF_SIZE];
     unsigned char rx_disc[BUF_SIZE];
@@ -782,8 +783,6 @@ int llclose(int showStatistics) {
 
         if (read(fd, buf, 1) == 0) continue;
         changeCloseStateTx(buf[0], &state);
-        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
-
 
         if (state == 5) {
             alarm(0);
@@ -792,6 +791,7 @@ int llclose(int showStatistics) {
         }
     }
     }
+
     else {
 
         STOP = FALSE;
@@ -800,6 +800,7 @@ int llclose(int showStatistics) {
             if (read(fd, buf, 1) == 0)
                 continue;
             changeCloseStateRxDisc(buf[0],&state);
+                
             if (state == 5) {
                 STOP = TRUE;
                            }
@@ -807,19 +808,18 @@ int llclose(int showStatistics) {
         alarmCount = 0;
         alarmEnabled = FALSE;
         while (alarmCount < retransmitions) {
-        
         if (alarmEnabled == FALSE) {
             write(fd, rx_disc, BUF_SIZE);
             alarmEnabled = TRUE;
-            alarm(3);
+            alarm(timeout);
             state = 0;
         }
         if (alarmCount == 3)
             break;
 
         if (read(fd, buf, 1) == 0) continue;
-
-        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
+        printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
+        
         changeCloseStateRxUa(buf[0], &state);
 
         if (state == 5) {
@@ -832,7 +832,6 @@ int llclose(int showStatistics) {
     if (state == 5) {
         //print_stats();
         printf("ACABOU BEM CARALHO\n");
-
         return 1;
     }
     printf("ACABOU MAL\n");
