@@ -9,6 +9,7 @@
 #include <math.h>
 #include <sys/time.h>
 
+
 #define MAX_PAYLOAD_SIZE 1000
 
 // MISC
@@ -61,6 +62,14 @@ int rx_frame_index = 0;
 LinkLayerRole gRole;
 struct termios oldtio;
 
+// ---------- Stats ---------
+int framesSent = 0;
+int framesReceived = 0;
+int retries = 0;
+//clock_t time_rx = clock();
+//double time_tx = 0;
+int bytes_sent = 0;
+int bytes_received = 0;
 
 // Alarm function handler
 void alarmHandler(int signal)
@@ -374,7 +383,6 @@ int changeControlPacketState(unsigned char buf, int* state, unsigned char* byte)
 }
 
 int llwrite(const unsigned char *buf, int bufSize){
-    //printf("BufSize : %d\n", bufSize);
     unsigned char newData[bufSize + 1];
     calc_BBC_2(buf,newData, bufSize);
 
@@ -394,8 +402,6 @@ int llwrite(const unsigned char *buf, int bufSize){
     frame[1] = A_tx;                // A
     frame[2] = tx_frame_index * 0x40;  // N(s)
     frame[3] = frame[1] ^ frame[2]; // BCC1 
-    //printf("N(s): 0x%02X ",frame[2]);
-    //printf("BCC1: 0x%02X ",frame[3]);
     memcpy(frame + 4, payload, payload_size);
     frame[frame_size - 1] = FLAG;   // Final Flag
 
@@ -406,15 +412,17 @@ int llwrite(const unsigned char *buf, int bufSize){
     (void)signal(SIGALRM, alarmHandler);
     unsigned char buffer[1];
     int written_bytes = 0;
+
+
     while(alarmCount < retransmitions ){ 
     if(alarmEnabled == FALSE){ 
         written_bytes = write(fd, frame, frame_size);
         alarmEnabled = TRUE;
         alarm(timeout);
+        alarmCount == 1 ? framesSent++ : retries++;
         }
          if (read(fd, buffer, 1) == 0)
             continue;
-        //printf("%02X ",buffer[0]);
         changeControlPacketState(buffer[0], &state, &byte);
         if (state != 5)
             continue;
@@ -422,6 +430,7 @@ int llwrite(const unsigned char *buf, int bufSize){
             printf("RR\n");
             tx_frame_index ++;
             tx_frame_index %= 2;
+            bytes_sent += written_bytes;
             return written_bytes;
         }
         if (byte == C_REJ0 || byte == C_REJ1)  { 
@@ -588,6 +597,7 @@ int llread(unsigned char *packet) {
         if (size == -1)
             return -1;
     }
+    framesReceived++;
     return size;
 }
 
@@ -763,9 +773,8 @@ int llclose(int showStatistics) {
             alarmEnabled = TRUE;
             alarm(timeout);
             state = 0;
+            alarmCount == 1 ? framesSent++ : retries++;
         }
-        if (alarmCount == 3)
-            break;
 
         if (read(fd, buf, 1) == 0) continue;
         changeCloseStateTx(buf[0], &state);
@@ -799,6 +808,8 @@ int llclose(int showStatistics) {
             alarmEnabled = TRUE;
             alarm(timeout);
             state = 0;
+            alarmCount == 1 ? framesSent++ : retries++;
+
         }
         if (alarmCount == 3)
             break;
