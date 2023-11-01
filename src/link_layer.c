@@ -269,7 +269,6 @@ int llopen(LinkLayer connectionParameters){
     int state = 0;
 
     while (STOP == FALSE) {
-
         if (read(fd, buf, 1) == 0)
             continue;
 
@@ -740,7 +739,6 @@ void changeCloseStateRxUa(unsigned char buf, int* state){
 int llclose(int showStatistics) {
     printf("ESTÁ A ACABAR\n");
     int state = 0;
-    int count = 0;
     unsigned char tx_disc[BUF_SIZE];
     unsigned char ua[BUF_SIZE];
     unsigned char rx_disc[BUF_SIZE];
@@ -757,7 +755,7 @@ int llclose(int showStatistics) {
     rx_disc[4] = FLAG;
 
     ua[0] = FLAG;
-    ua[1] = A_tx;
+    ua[1] = A_rx;
     ua[2] = C_UA;
     ua[3] = ua[1] ^ ua[2];
     ua[4] = FLAG;  
@@ -773,7 +771,8 @@ int llclose(int showStatistics) {
     while (alarmCount < retransmitions) {
         
         if (alarmEnabled == FALSE) {
-            write(fd, tx_disc, BUF_SIZE);
+            write(fd, tx_disc, CONTROL_BYTE_SIZE);
+            printf("Sent txDISC\n");
             alarmEnabled = TRUE;
             alarm(timeout);
             state = 0;
@@ -786,7 +785,8 @@ int llclose(int showStatistics) {
 
         if (state == 5) {
             alarm(0);
-            write(fd, ua, BUF_SIZE);
+            printf("Received RxDisc\nSent UA\n");
+            write(fd, ua, CONTROL_BYTE_SIZE);
             break;
         }
     }
@@ -800,8 +800,9 @@ int llclose(int showStatistics) {
             if (read(fd, buf, 1) == 0)
                 continue;
             changeCloseStateRxDisc(buf[0],&state);
-                
+            
             if (state == 5) {
+                printf("Received TxDISC\n");
                 STOP = TRUE;
                            }
         }
@@ -809,7 +810,8 @@ int llclose(int showStatistics) {
         alarmEnabled = FALSE;
         while (alarmCount < retransmitions) {
         if (alarmEnabled == FALSE) {
-            write(fd, rx_disc, BUF_SIZE);
+            write(fd, rx_disc, CONTROL_BYTE_SIZE);
+            printf("Sent DISC\n");
             alarmEnabled = TRUE;
             alarm(timeout);
             state = 0;
@@ -818,17 +820,16 @@ int llclose(int showStatistics) {
             break;
 
         if (read(fd, buf, 1) == 0) continue;
-        printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
         
         changeCloseStateRxUa(buf[0], &state);
-
+        
         if (state == 5) {
             alarm(0);
+            close(fd);
             break;
         }
     }
     }
-    close(fd);
     if (state == 5) {
         //print_stats();
         printf("ACABOU BEM CARALHO\n");

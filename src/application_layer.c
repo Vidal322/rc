@@ -182,24 +182,24 @@ int sendFile(int fd,const char* filename){
     long int data_rest = fileSize % DATA_SIZE;
     long int data_size = 0;
     long int packet_size = 0;
+    int packet_count = 0;
     
     long int fileSize2 = fileSize;
     while(fileSize2 != 0){
             
         //create datapacket , filesize - data_size , senddatpacket
         data_size = fileSize2 > DATA_SIZE ? DATA_SIZE : data_rest;
-        printf("DataHolder :%li\n",fileSize2);
+        //printf("DataHolder :%li\n",fileSize2);
         //printf("data_size: %li\n",data_size);
 
         packet_size = data_size + 4;
 
         printf("packet_size: %li\n",packet_size);
         unsigned char* dataPacket; //(unsigned char*)malloc(packet_size);
-        printf("dataHolder :\n");
+        /*printf("dataHolder :\n");
         for(int i = 0; i < 30; i++){
             printf("%02X ",dataHolder[i]);
-        }
-        printf("\n");
+        }*/
 
         dataPacket = createDataPacket(dataHolder,packet_size);
 
@@ -208,6 +208,8 @@ int sendFile(int fd,const char* filename){
             printf("Error sending data packet\n");
             return -1;
         }
+                printf("Packet Count: %i\n", packet_count++);
+
         dataHolder += data_size;
         fileSize2 -= data_size;
         free(dataPacket);
