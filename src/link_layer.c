@@ -1,4 +1,3 @@
-
 #include "link_layer.h"
 #include <signal.h>
 #include <stdio.h>
@@ -56,10 +55,12 @@ int alarmCount = 0;
 volatile int STOP = FALSE;
 int retransmitions;
 int timeout;
+int fd;
 int tx_frame_index = 0;
 int rx_frame_index = 0;
-int fd;
 LinkLayerRole gRole;
+struct termios oldtio;
+
 
 // Alarm function handler
 void alarmHandler(int signal)
@@ -161,7 +162,7 @@ void changeOpenState(unsigned char buf, int* state, LinkLayerRole role){
 
 int openSerialPort(char* serialPort, int baudrate) {  
 
-    int fd = open(serialPort, O_RDWR | O_NOCTTY);
+    fd = open(serialPort, O_RDWR | O_NOCTTY);
     
     printf("Serial Port: %d\n",fd);
     if (fd < 0) {
@@ -169,8 +170,6 @@ int openSerialPort(char* serialPort, int baudrate) {
         exit(-1);
     }
     
-
-    struct termios oldtio;
     struct termios newtio;
 
     // Save current port settings
@@ -405,7 +404,6 @@ int llwrite(const unsigned char *buf, int bufSize){
     int state = 0;
     unsigned char byte = 0x00;
     (void)signal(SIGALRM, alarmHandler);
-    printf("\n");
     unsigned char buffer[1];
     int written_bytes = 0;
     while(alarmCount < retransmitions ){ 
@@ -530,19 +528,16 @@ int changeReadState(unsigned char buf, int* state, unsigned char* packet, int* i
             else if (buf == FLAG) {
                 *state = 6;
                 unsigned char bcc2 = packet[(*index)-1];
-                printf("\nBCC2 : %02X\n",bcc2);
                 unsigned char xor = packet[0];
 
                 for (int j = 1; j< *index-1; j++) {
                     xor ^= packet[j];
                 }                                             // 
-                printf("XOR : %02X\n",xor);
                 if (bcc2 == xor) {  // Valid data
                     *state = 6;
                     rx_frame_index = (rx_frame_index + 1) % 2;
                     send_RR(rx_frame_index);
                     printf("SENT RR\n");
-                    printf("INDEX RETURN %i \n ",*index);
                     return 0;
                 }
                 else  {
@@ -586,21 +581,13 @@ int llread(unsigned char *packet) {
     int state = 0;
     unsigned char buf[1];
     int size = 0;
-    //printf("\nRecieved buf: ");
     while(state != 6) {
         if (read(fd, buf, 1) == 0)
             continue;
-        //printf("%02X ",buf[0]);
         changeReadState(buf[0], &state, packet, &size);
         if (size == -1)
             return -1;
     }
-    /*printf("packet llread: ");
-    for(int i = 0 ; i < 20 ; i++){
-        printf("%02X ",packet[i]);
-    }
-        printf("\nSize: %d\n", size);*/
-   
     return size;
 }
 
@@ -739,7 +726,6 @@ void changeCloseStateRxUa(unsigned char buf, int* state){
 }
 
 int llclose(int showStatistics) {
-    printf("ESTÁ A ACABAR\n");
     int state = 0;
     unsigned char tx_disc[BUF_SIZE];
     unsigned char ua[BUF_SIZE];
@@ -774,7 +760,6 @@ int llclose(int showStatistics) {
         
         if (alarmEnabled == FALSE) {
             write(fd, tx_disc, CONTROL_BYTE_SIZE);
-            printf("Sent txDISC\n");
             alarmEnabled = TRUE;
             alarm(timeout);
             state = 0;
@@ -787,7 +772,6 @@ int llclose(int showStatistics) {
 
         if (state == 5) {
             alarm(0);
-            printf("Received RxDisc\nSent UA\n");
             write(fd, ua, CONTROL_BYTE_SIZE);
             break;
         }
@@ -804,7 +788,6 @@ int llclose(int showStatistics) {
             changeCloseStateRxDisc(buf[0],&state);
             
             if (state == 5) {
-                printf("Received TxDISC\n");
                 STOP = TRUE;
                            }
         }
@@ -813,7 +796,6 @@ int llclose(int showStatistics) {
         while (alarmCount < retransmitions) {
         if (alarmEnabled == FALSE) {
             write(fd, rx_disc, CONTROL_BYTE_SIZE);
-            printf("Sent DISC\n");
             alarmEnabled = TRUE;
             alarm(timeout);
             state = 0;
@@ -827,17 +809,21 @@ int llclose(int showStatistics) {
         
         if (state == 5) {
             alarm(0);
-            close(fd);
+ 
             break;
         }
     }
     }
+    if (tcsetattr(fd, TCSANOW, &oldtio) == -1){
+        perror("tcsetattr");
+        exit(-1);
+    }
+    close(fd);
     if (state == 5) {
         //print_stats();
-        printf("ACABOU BEM CARALHO\n");
+        printf("llclose\n");
         return 1;
     }
-    printf("ACABOU MAL\n");
 
     return -1;
 }

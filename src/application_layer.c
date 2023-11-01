@@ -23,78 +23,52 @@ const char* receiverFileName;
 int createControlPacket(unsigned char c , unsigned char** controlPacketStart, long int fileSize, const char* filename){
 
     int filenameSize = strlen(filename) + 1; // number of octates of filename
-    //printf("Actual FileSize: %ld\n", fileSize);
-    //printf("Actual FilenameSize: %i\n", filenameSize);
-    
     int numBits = sizeof(int) * 8 - __builtin_clz(fileSize);
     unsigned char fileSizeSize = (numBits + 7) / 8;
-    //printf("FileSizeSize: %i\n",fileSizeSize);
-    //printf("packetSize: %i\n",filenameSize + fileSizeSize + 5);
-// rounds up to the nearest byte
     unsigned char* controlPacket = (unsigned char*) malloc( filenameSize + fileSizeSize + 5); // allocs memory for the control packet
    
     
     controlPacket[0] = c;
     controlPacket[1] = 0x00;
-    controlPacket[2] = filenameSize & 0xFF; // (char)filenameSize/sizeof(char)
+    controlPacket[2] = filenameSize & 0xFF; 
     memcpy(controlPacket + 3, filename, filenameSize);
 
     
     controlPacket[3 + filenameSize] = 0x01;
-    controlPacket[4 + filenameSize] = fileSizeSize; // rounds up to the nearest byte
+    controlPacket[4 + filenameSize] = fileSizeSize;
     
-    for (int i = 0; i < fileSizeSize; i++) { //n sei se aqui devo usar filesize +7 >>3
+    for (int i = 0; i < fileSizeSize; i++) { 
     controlPacket[4 + fileSizeSize + filenameSize - i] = (fileSize >> (i * 8)) & 0xFF;
 }
 
     *controlPacketStart = controlPacket;
-    printf("controlPacket\n");
-    /*for(int i = 0; i < filenameSize + fileSizeSize + 5 ; i++){
-        printf(" %02X ",controlPacket[i]);
-    }
-    //printf("\n");
-    //printf("controlPacketStart:");
-    for(int i = 0; i < filenameSize + fileSizeSize + 5 ; i++){
-        printf(" %02X ",(*controlPacketStart)[i]);
-    }*/
     
-
     return filenameSize + fileSizeSize + 5;
 }
 
 int getData(unsigned char* dataHolder, FILE* file, size_t fileSize){
-    
-   //printf("data file pointer 1: %p\n",file);
    fread(dataHolder,sizeof(unsigned char),fileSize,file);
-   //printf("data file pointer 2: %p\n",file);
-       
    return 0;
  }
 
 unsigned char* createDataPacket(unsigned char* dataHolder, size_t dataSize){
 
     unsigned char* dataPacket = (unsigned char*)malloc(dataSize);
-    //printf("PacketSize: %ld  \n",dataSize);
     dataPacket[0] = 1;
     dataPacket[1] = 2;
     dataPacket[2] = dataSize >> 8 & 0xFF;
     dataPacket[3] = dataSize & 0xFF;
     memcpy(dataPacket + 4, dataHolder, dataSize-4);
-    //printf("Dataholder pointer: %p\n",dataHolder);
    
     return dataPacket;
  }
 
 char* parseControlPacket(unsigned char* packet , long int* size){
    
-    printf("parsedControlPacket:");
-    for(int i = 0; i < 20; i++){ 
-        printf("%02X ", packet[i]);
-    }
+    printf("parsedControlPacket\n");
         
     unsigned char filenameSize = packet[2];
     unsigned char fileSizeSize = packet[4 + filenameSize];
-    printf("\nfileSizeSize: %d\n",fileSizeSize);
 
     char* fileName= (char*)malloc(filenameSize);
     unsigned char* fileSize = (unsigned char*)malloc(fileSizeSize);
@@ -103,11 +77,8 @@ char* parseControlPacket(unsigned char* packet , long int* size){
 
     memcpy(fileSize,packet + 5 + filenameSize,fileSizeSize);
     
-    printf("size: %li\n",*size);
-    printf("fileSizeSize: %02x\n",fileSizeSize);
     for (int i = 0; i < fileSizeSize; i++) {
         *size |= (fileSize[fileSizeSize - i - 1] << (i * 8));
-        printf("size: %li\n",*size);
     }
     free(fileSize);
     memcpy(fileName,packet + 3,filenameSize);
@@ -122,12 +93,9 @@ char* parseControlPacket(unsigned char* packet , long int* size){
 
  }
 
-int sendFile(int fd,const char* filename){
-        printf("FileName:");
-    for( int i = 0 ; i < 11; i++){
-        printf("%c",filename[i]);
-    }
-    printf("\n");
+int sendFile(const char* filename){
+    
+    printf("File name: %s\n",filename);
    
     FILE* file = fopen(filename, "rb");
     if (file == NULL) {
@@ -151,13 +119,14 @@ int sendFile(int fd,const char* filename){
         // handle error
     }
 
-    printf("FileSize: %ld\n", fileSize);
+    printf("FileSize: %ld\n\n", fileSize);
     rewind(file);
 
     int controlPacketSize;
     unsigned char* controlPacketStart;
     controlPacketSize = createControlPacket(2 ,&controlPacketStart, fileSize, filename); // 2 for start control packet
-
+    
+    printf("\nStart control packet\n");
     if(llwrite(controlPacketStart, controlPacketSize) == -1){
         printf("Error sending control packet\n");
         free(controlPacketStart);
@@ -187,7 +156,7 @@ int sendFile(int fd,const char* filename){
 
         dataPacket = createDataPacket(dataHolder,packet_size);
 
-        printf("Packet Count: %i\n", packet_count++);
+        printf("\nPacket number: %i\n", packet_count++);
 
         if(llwrite(dataPacket,packet_size) == -1){
             printf("Error sending data packet\n");
@@ -206,6 +175,7 @@ int sendFile(int fd,const char* filename){
 
     unsigned char* controlPacketEnd;
     controlPacketSize = createControlPacket(3 ,&controlPacketEnd, fileSize, filename); // 2 for start control packet
+    printf("\nEnd control packet \n");
 
     if(llwrite(controlPacketEnd, controlPacketSize) == -1){
         printf("Error sending control packet\n");
@@ -213,12 +183,12 @@ int sendFile(int fd,const char* filename){
         return -1;
     }
     free(controlPacketEnd);
-    llclose(fd);
+    llclose(0);
     return 0;
     
 } 
 
-int receiveFile(int fd){
+int receiveFile(){
 
     unsigned char packet[DATA_SIZE+5];
     char* filename;
@@ -226,22 +196,14 @@ int receiveFile(int fd){
     long int totalPackets = 0;
     int packetsCount = 0;
     long int actualPacketSize = 0;
+    printf("\nStart control packet\n");
     llread(packet); 
-
-    printf("packet:");
-    for(int i = 0 ; i < 19; i++){
-        printf("%02X ",packet[i]);
-    }
-    printf("\n");
 
     filename = parseControlPacket(packet,&fileSize);
    
-     printf("fileSize: %li\n",fileSize);
-     printf("fileName:");
-    for (int i = 0; i < 11; i++) {
-        printf("%c",filename[i]);
-    }
-    printf("\n");
+    printf("file size: %li\n",fileSize);
+    printf("file name: %s\n",filename);
+
     totalPackets = (fileSize + DATA_SIZE - 1) / DATA_SIZE;
     printf("TotalPackets: %li\n",totalPackets);
     
@@ -259,17 +221,17 @@ int receiveFile(int fd){
             printf("Error receiving data packet\n");
             return -1;
         }
-        printf("packet count : %i\n",packetsCount);
-        packetsCount++;
-        actualPacketSize -= 5;
+        printf("\nPacket Number: %d\n", packetsCount++);
+        actualPacketSize -= 5;  // Tirar 
         unsigned char *data = (unsigned char*) malloc(actualPacketSize);
         parseDataPacket(packet,data,actualPacketSize);
 
-        printf("parsed the Data\n");
         fwrite(data, sizeof(unsigned char),  actualPacketSize, receiverFile);
         free(data);
     }
     fclose(receiverFile);
+    printf("\nEnd control packet \n");
+
     while(llread(packet) == 0);
     fn = parseControlPacket(packet,&fileSize);
     if (strcmp(fn,filename) != 0) {
@@ -299,19 +261,18 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     receiverFileName = filename;
   
-    int fd = llopen(linkLayer);
-    if (fd < 0) {
+    if (llopen(linkLayer) == - 1) {
         printf("Error opening connection\n");
         return;
     }
-    
+
     switch(linkLayer.role)
     {
         case LlTx:
-            sendFile(fd, filename);
+            sendFile(filename);
             break;
         case LlRx:
-            receiveFile(fd);
+            receiveFile();
             break;
     } 
 
