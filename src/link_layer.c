@@ -163,7 +163,7 @@ int openSerialPort(char* serialPort, int baudrate) {
 
     int fd = open(serialPort, O_RDWR | O_NOCTTY);
     
-    printf("%d",fd);
+    printf("Serial Port: %d\n",fd);
     if (fd < 0) {
         perror(serialPort);
         exit(-1);
@@ -248,15 +248,17 @@ int llopen(LinkLayer connectionParameters){
         if (alarmCount == retransmitions)
             break;
 
-        read(fd, buf, 1);
+        if(read(fd, buf, 1) == 0) continue;
 
-        //printf("var = 0x%02X state:%d\n", (unsigned int)(buf[0] & 0xFF), state);
         changeOpenState(buf[0], &state, connectionParameters.role);
 
         if (state == 5) {
             alarm(0);
             break;
         }
+    }
+    if (state != 5) {
+        return -1;
     }
     printf("llopen\n");
     return 1;
@@ -297,7 +299,7 @@ int specialByteCount(const unsigned char* data, int size) {
 
 int stuffArray(const unsigned char* data,unsigned char* res, int size) {
     int j = 0, i = 0;
-    printf("data:\n");
+    //printf("data:\n");
     for (i = 0; i < size; i++) {
         //printf("%02x ", data[i]);
         if (data[i] == 0x7E) {
@@ -373,7 +375,7 @@ int changeControlPacketState(unsigned char buf, int* state, unsigned char* byte)
 }
 
 int llwrite(const unsigned char *buf, int bufSize){
-    printf("BufSize : %d\n", bufSize);
+    //printf("BufSize : %d\n", bufSize);
     unsigned char newData[bufSize + 1];
     calc_BBC_2(buf,newData, bufSize);
 
@@ -426,7 +428,7 @@ int llwrite(const unsigned char *buf, int bufSize){
         }
         if (byte == C_REJ0 || byte == C_REJ1)  { 
             printf("REJ\n");
-            return -1; 
+            alarmEnabled = FALSE;
             }
     }
     return -1;
