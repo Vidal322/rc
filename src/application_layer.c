@@ -215,13 +215,15 @@ int receiveFile(){
     char* fn;
     while(packetsCount < totalPackets){
     
+        printf("\nPacket Number: %d\n", packetsCount++);    
         if ((actualPacketSize = llread(packet)) == 0)
             continue;
         else if (actualPacketSize == -1) {
             printf("Error receiving data packet\n");
+            free(filename);
             return -1;
         }
-        printf("\nPacket Number: %d\n", packetsCount++);
+
         actualPacketSize -= 5;  // Tirar 
         unsigned char *data = (unsigned char*) malloc(actualPacketSize);
         parseDataPacket(packet,data,actualPacketSize);
@@ -236,6 +238,10 @@ int receiveFile(){
     fn = parseControlPacket(packet,&fileSize);
     if (strcmp(fn,filename) != 0) {
         printf("Error receiving control packet\n");
+        printf("fn: %s\n", fn);
+        printf("filename: %s\n", filename);
+        free(filename);
+        free(fn);
         return -1;
     }
     free(filename);

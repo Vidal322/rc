@@ -479,7 +479,7 @@ int send_REJ (unsigned char frame_index){
    REJ[0] = FLAG;
    REJ[1] = A_tx;
    REJ[2] = C_REJ(frame_index);
-   REJ[3] =REJ[1] ^REJ[2];
+   REJ[3] = REJ[1] ^REJ[2];
    REJ[4] = FLAG;
 
     write(fd,REJ,5);
@@ -567,6 +567,8 @@ int changeReadState(unsigned char buf, int* state, unsigned char* packet, int* i
                 else  {
                     send_REJ(rx_frame_index);
                     printf("SENT REJ\n");
+                    *state = 0;
+                    *index = 0;
                     return -1;
                 }
             }
